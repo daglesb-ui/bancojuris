@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jurisprudência TC's - v89.0 Master</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; overflow-x: hidden; }
+        .sidebar { height: calc(100vh - 70px); position: sticky; top: 70px; }
+        .card-decision { border-left-width: 6px; border-radius: 1.25rem; border: 1px solid #e2e8f0; background: white; margin-bottom: 20px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); transition: all 0.2s; }
+        .card-decision:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+        .tag-base { font-size: 10px; font-weight: 800; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; display: inline-flex; align-items: center; }
+        mark { background-color: #fde047 !important; color: #000 !important; padding: 0 2px; border-radius: 2px; font-weight: 800; }
+        .pagination-btn { padding: 8px 16px; border-radius: 12px; font-weight: 800; text-transform: uppercase; font-size: 11px; transition: 0.2s; border: 1px solid #e2e8f0; background: white; color: #64748b; cursor: pointer; }
+        .pagination-btn:hover:not(:disabled) { background: #f1f5f9; border-color: #cbd5e1; color: #1e293b; }
+        .pagination-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
+</head>
+<body class="antialiased text-slate-900">
+
+    <nav class="h-[70px] bg-white border-b border-slate-200 flex items-center px-8 sticky top-0 z-[100] justify-between shadow-sm">
+        <div class="flex items-center gap-4">
+            <div class="bg-blue-600 p-2.5 rounded-xl text-white shadow-lg shadow-blue-200">⚖️</div>
+            <h1 class="text-xl font-extrabold tracking-tight">Jurisprudência <span class="text-blue-600">TC's</span> <span class="text-[10px] opacity-20 uppercase font-black ml-1 tracking-widest">v89.0</span></h1>
+        </div>
+        <div class="flex gap-3">
+            <button onclick="exportarCSV()" class="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-5 py-2.5 rounded-xl font-black uppercase hover:bg-emerald-100 transition shadow-sm">📊 Exportar Tela (Excel)</button>
+            <button onclick="exportarBackup()" class="text-[10px] border border-slate-200 px-5 py-2.5 rounded-xl font-black uppercase text-slate-500 hover:bg-slate-50 transition">💾 Backup JSON</button>
+            <button onclick="clearSystem()" class="text-[10px] bg-rose-50 text-rose-600 px-5 py-2.5 rounded-xl font-black uppercase hover:bg-rose-100 transition">🗑️ Zerar Base</button>
+        </div>
+    </nav>
+
+    <div class="flex">
+        <aside class="w-80 bg-white border-r border-slate-200 p-6 sidebar hidden lg:flex flex-col overflow-y-auto">
+            <button onclick="openImportModal()" class="w-full mb-6 bg-blue-600 text-white p-4 rounded-xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition uppercase text-[11px] tracking-widest">📥 Importar JSON</button>
+            
+            <button id="reportBtn" onclick="generateBasketReport()" class="hidden w-full mb-6 bg-emerald-600 text-white p-4 rounded-xl font-black shadow-lg shadow-emerald-200 uppercase text-[11px] tracking-widest hover:bg-emerald-700 transition">📋 Cesta de Decisões (<span id="basketQty">0</span>)</button>
+
+            <div class="mb-6 bg-slate-800 rounded-3xl p-6 text-center shadow-xl border-b-4 border-blue-500">
+                <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Decisões Cadastradas</p>
+                <p id="grandTotal" class="text-4xl font-black text-white tracking-tighter">0</p>
+            </div>
+
+            <details class="mb-8 bg-slate-50 rounded-2xl border border-slate-200 group transition-all">
+                <summary class="p-4 text-[10px] font-black text-slate-600 uppercase tracking-widest cursor-pointer list-none flex justify-between items-center hover:bg-slate-100 rounded-2xl">
+                    <span class="flex items-center gap-2">🔗 Configurar Links</span>
+                    <span class="text-slate-400 group-open:rotate-180 transition-transform">▼</span>
+                </summary>
+                <div class="p-4 pt-0 space-y-3 max-h-48 overflow-y-auto custom-scroll" id="linkManagerList"></div>
+            </details>
+
+            <div class="flex justify-between items-end mb-4 border-b border-slate-100 pb-2">
+                <h2 class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filtros Ativos</h2>
+                <button onclick="clearFilters()" class="text-[9px] font-bold text-rose-500 hover:text-rose-700 uppercase transition bg-rose-50 px-2 py-1 rounded shadow-sm">Limpar Tudo ✕</button>
+            </div>
+
+            <h3 class="text-[10px] font-black text-slate-400 uppercase mb-3 mt-2 tracking-widest">Por Órgão</h3>
+            <div id="filterTribunalList" class="space-y-1 mb-8"></div>
+
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest m-0">Ano do Processo</h3>
+                <button onclick="toggleAll('year')" class="text-[9px] font-bold text-blue-500 hover:text-blue-700 uppercase transition">Todos / Nenhum</button>
+            </div>
+            <div id="filterYearList" class="pb-10"></div>
+        </aside>
+
+        <main class="flex-1 p-10 bg-slate-50">
+            <div class="sticky top-[90px] z-[50] mb-10 bg-white p-8 rounded-3xl shadow-xl border border-slate-200 flex flex-col gap-5">
+                <div class="flex gap-4 items-center">
+                    <div class="relative flex-1 group">
+                        <input type="text" id="searchInput" oninput="handleSearchInput()" placeholder="Pesquise por palavras na ementa ou processo..." class="w-full p-4 pl-14 rounded-xl bg-slate-100 border-none focus:ring-4 focus:ring-blue-500/20 outline-none font-bold text-slate-700 transition-all text-base placeholder:text-slate-400">
+                        <span class="absolute left-5 top-4 opacity-40 text-xl">🔍</span>
+                    </div>
+                    
+                    <select id="sortOrder" onchange="resetPageAndSearch()" class="bg-slate-100 border-none font-bold text-slate-600 text-sm rounded-xl outline-none px-6 py-4 cursor-pointer hover:bg-slate-200 transition">
+                        <option value="recent">Adição (Mais Recente)</option>
+                        <option value="old">Adição (Mais Antiga)</option>
+                        <option value="year_new">Ano Processo (Mais Novo)</option>
+                        <option value="year_old">Ano Processo (Mais Antigo)</option>
+                        <option value="az">Órgão (A-Z)</option>
+                        <option value="za">Órgão (Z-A)</option>
+                    </select>
+                </div>
+                
+                <div class="px-2 flex items-center justify-between">
+                    <label class="flex items-center gap-2 cursor-pointer group">
+                        <input type="checkbox" id="exactMatch" onchange="resetPageAndSearch()" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-0">
+                        <span class="text-[10px] font-black uppercase text-slate-400 group-hover:text-slate-600 transition">Pesquisa por Termo Exato</span>
+                    </label>
+                    <span id="resultsCount" class="text-[10px] font-black text-slate-400 uppercase tracking-widest"></span>
+                </div>
+            </div>
+            
+            <div id="decisionList" class="grid grid-cols-1"></div>
+
+            <div id="paginationControls" class="flex items-center justify-center gap-4 mt-8 pb-32 hidden">
+                <button id="prevPage" onclick="changePage(-1)" class="pagination-btn">← Anterior</button>
+                <span id="pageIndicator" class="text-xs font-black text-slate-400 uppercase tracking-widest">Página 1</span>
+                <button id="nextPage" onclick="changePage(1)" class="pagination-btn">Próxima →</button>
+            </div>
+        </main>
+    </div>
+
+    <div id="editModal" class="fixed inset-0 z-[5000] hidden flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-sm">
+        <div class="bg-white w-full max-w-3xl rounded-[2rem] p-10 shadow-2xl">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-black text-slate-800">✏️ Editar Registro</h3>
+                <button onclick="closeEditModal()" class="text-slate-400 hover:text-rose-500 font-bold text-xs uppercase transition">✕ Sair</button>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-500 uppercase mb-2">Órgão / Tribunal</label>
+                    <input type="text" id="editTribunal" class="w-full p-3 text-sm rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-500 uppercase mb-2">Processo / Número</label>
+                    <input type="text" id="editProcesso" class="w-full p-3 text-sm rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-blue-500">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-500 uppercase mb-2">Ano do Processo</label>
+                    <input type="text" id="editAno" class="w-full p-3 text-sm rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-500 uppercase mb-2">Boletim / Informativo</label>
+                    <input type="text" id="editBoletim" class="w-full p-3 text-sm rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-blue-500" placeholder="Ex: e25, Boletim 12...">
+                </div>
+            </div>
+
+            <div class="mb-6">
+                <label class="block text-[10px] font-black text-slate-500 uppercase mb-2">Ementa / Texto Principal</label>
+                <textarea id="editEmenta" class="w-full h-48 p-4 text-sm leading-relaxed rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-blue-500 custom-scroll"></textarea>
+            </div>
+
+            <div class="flex justify-end gap-3 mt-6">
+                <button onclick="closeEditModal()" class="px-6 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-[10px] uppercase hover:bg-slate-200 transition">Cancelar</button>
+                <button onclick="saveEdit()" class="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold text-[10px] uppercase shadow-lg tracking-widest hover:bg-blue-700 transition">Salvar Alterações</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="importModal" class="fixed inset-0 z-[5000] hidden flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-sm">
+        <div class="bg-white w-full max-w-2xl rounded-[2rem] p-10 shadow-2xl">
+            <div class="flex justify-between items-center mb-6"><h3 class="text-2xl font-black text-slate-800">Adicionar Decisões</h3><button onclick="closeImportModal()" class="text-slate-400 hover:text-rose-500 font-bold text-xs uppercase transition">✕ Sair</button></div>
+            <div class="flex gap-3 mb-6">
+                <button onclick="document.getElementById('fileInput').click()" class="flex-1 bg-blue-600 text-white hover:bg-blue-700 p-4 rounded-2xl font-black text-[12px] uppercase shadow-lg transition">📁 Abrir Ficheiro JSON</button>
+                <button onclick="undoLastBatch()" class="bg-rose-50 text-rose-600 px-6 rounded-2xl font-black uppercase text-[11px] border border-rose-100 hover:bg-rose-200 transition">🗑️ Desfazer Último Lote</button>
+            </div>
+            <input type="file" id="fileInput" class="hidden" accept=".json" onchange="handleFileSelect(event)">
+            <textarea id="jsonPasteArea" class="w-full h-48 bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs font-mono outline-none focus:ring-2 focus:ring-blue-500/20" placeholder="Ou cole o JSON copiado aqui..."></textarea>
+            <div class="flex justify-end gap-3 mt-6"><button onclick="processImport()" class="px-8 py-4 bg-slate-900 text-white rounded-xl font-bold text-[10px] uppercase shadow-lg tracking-widest hover:bg-slate-800">Processar Agora</button></div>
+        </div>
+    </div>
+
+    <script>
+        const CONFIG_TRIBUNAIS = {
+            'TCU': 'https://pesquisa.apps.tcu.gov.br/',
+            'TCM-Rio': 'https://www.tcm.rio.rj.gov.br/Jurisprudencia/',
+            'TCE-RJ': 'https://www.tcerj.tc.br/consulta-processo/jurisprudencia',
+            'TCM-SP': 'https://portal.tcm.sp.gov.br/Jurisprudencia/',
+            'TCE-SP': 'https://www.tce.sp.gov.br/jurisprudencia',
+            'TCDF': 'https://www.tc.df.gov.br/consultas/jurisprudencia/',
+            'TCE-SC': 'https://jurisprudencia.tcesc.tc.br/',
+            'TCM-BA': 'https://www.tcm.ba.gov.br/jurisprudencia/',
+            'DEFAULT': 'https://www.google.com/search?q=jurisprudencia+'
+        };
+
+        const dbName = "JurisOMNI_Infinite"; 
+        let db, fullData = [], selectedTribunais = [], selectedYears = [], basket = [];
+        let currentPage = 1, pageSize = 50;
+        let searchTimeout;
+        let lastFilteredData = [];
+        let currentEditId = null;
+
+        const TRIBUNAL_COLORS = { 'TCU': '#2563eb', 'TCM-Rio': '#10b981', 'TCE-RJ': '#8b5cf6', 'TCDF': '#f59e0b', 'TCE-SC': '#e11d48', 'TCM-SP': '#f97316', 'TCM-BA': '#14b8a6', 'DEFAULT': '#64748b' };
+        const normalizar = (s) => s ? s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
+
+        // O milissegundo de inserção determina a ordem exata das adições
+        const getRealTimestamp = (d) => {
+            if (d.timestamp) return d.timestamp;
+            const parts = d.id.split('-');
+            if (parts.length > 0) {
+                const possibleTime = parseInt(parts[parts.length - 1]);
+                if (possibleTime > 1000000000000) return possibleTime;
+            }
+            return 0;
+        };
+
+        const request = indexedDB.open(dbName, 1);
+        request.onupgradeneeded = (e) => {
+            db = e.target.result;
+            if(!db.objectStoreNames.contains('geral')) db.createObjectStore('geral', { keyPath: 'id' });
+        };
+        request.onsuccess = (e) => { db = e.target.result; syncUI(); };
+
+        let tribunalLinks = JSON.parse(localStorage.getItem('juris_links_v1')) || {};
+        
+        function renderLinkManager() {
+            const allTribs = [...new Set(fullData.map(d => d.tribunal))].sort();
+            const html = allTribs.map(t => `
+                <div class="flex flex-col gap-1">
+                    <label class="text-[9px] font-black text-blue-600 uppercase">${t}</label>
+                    <input type="text" value="${tribunalLinks[t] || CONFIG_TRIBUNAIS[t] || ''}" onchange="updateLink('${t}', this.value)" placeholder="Cole o link aqui..." class="w-full p-2 text-[10px] font-mono rounded-lg border border-slate-200 outline-none focus:border-blue-400 bg-white">
+                </div>
+            `).join('');
+            document.getElementById('linkManagerList').innerHTML = html || '<p class="text-xs text-slate-400">Nenhum órgão na base.</p>';
+        }
+
+        function updateLink(tribunal, url) {
+            tribunalLinks[tribunal] = url.trim();
+            localStorage.setItem('juris_links_v1', JSON.stringify(tribunalLinks));
+        }
+
+        function openExternalLink(tribunal, processo) {
+            const baseUrl = tribunalLinks[tribunal] || CONFIG_TRIBUNAIS[tribunal];
+            if (baseUrl) {
+                window.open(baseUrl, '_blank');
+            } else {
+                if(confirm(`Link não configurado para o ${tribunal}. Pesquisar no Google?`)) {
+                    window.open(`https://www.google.com/search?q=jurisprudencia+${tribunal.replace(' ', '+')}+${processo.replace(/\//g, '%2F')}`, '_blank');
+                }
+            }
+        }
+
+        function extractBoletim(item) {
+            const obj = item.original || item;
+            return obj.boletim || obj.informativo || obj.fonte || obj.publicacao || obj.boletim_jurisprudencia || null;
+        }
+
+        function extractYear(item) {
+            const currentYear = new Date().getFullYear();
+            const proc = (item.processo || "").trim().toUpperCase();
+            const num = (item.numero || "").trim().toUpperCase();
+            const nat = (item.natureza || item.tipo || "").trim().toUpperCase();
+
+            if (nat === 'SÚMULA' || nat === 'SUMULA' || /^S[ÚU]MULA\b/.test(proc) || /^S[ÚU]MULA\b/.test(num)) return "SÚMULAS";
+
+            const trib = item.tribunal || '';
+            const textToSearch = `${proc} ${num}`;
+
+            if (trib === 'TCE-SC') {
+                const matchCON = textToSearch.match(/CON\s*[-/]?\s*(\d{2})\b/);
+                if (matchCON) { let yy = parseInt(matchCON[1]); return "20" + (yy < 10 ? "0" + yy : yy); }
+            }
+
+            if (trib === 'TCM-BA' || trib === 'TCMBA') {
+                const matchBA = textToSearch.match(/[eE](\d{2})(?:\b|$)/);
+                if (matchBA) {
+                    let yy = parseInt(matchBA[1]);
+                    if (yy <= ((currentYear % 100) + 1)) return "20" + (yy < 10 ? "0" + yy : yy);
+                    else return "19" + yy;
+                }
+            }
+
+            const textosSeguros = [];
+            if (item.data_decisao) textosSeguros.push(item.data_decisao);
+            textosSeguros.push(textToSearch);
+            if (item.original && item.original.data_decisao) textosSeguros.push(item.original.data_decisao);
+            
+            const textoBusca = textosSeguros.join(" ");
+            const matches = textoBusca.match(/[\/\.-](199\d|20[0-2]\d)\b/g);
+            if (matches) {
+                const years = matches.map(m => parseInt(m.replace(/[\/\.-]/, '')));
+                const validYears = years.filter(y => y <= currentYear + 1);
+                if (validYears.length > 0) return Math.max(...validYears).toString();
+            }
+            
+            const dateMatch = textoBusca.match(/\b\d{2}\/\d{2}\/(199\d|20[0-2]\d)\b/);
+            if (dateMatch) return dateMatch[1];
+
+            return "Não Categorizado";
+        }
+
+        // Função de mapeamento com index de inserção para garantir cronologia milimétrica
+        function mapData(item, batchId = 'Legado', insertIndex = 0) {
+            if(!item) return null;
+            let trib = item.tribunal || 'Desconhecido';
+            if (trib.toUpperCase().replace(/[\s\.-]/g, '') === 'TCMSP') trib = 'TCM-SP';
+            let ementaTexto = item.ementa || item.texto || item.resumo_analitico || item.resumo || "Conteúdo não disponível.";
+
+            let ts = item.timestamp;
+            if (!ts) {
+                if (item.id) {
+                    const parts = item.id.split('-');
+                    if (parts.length > 0) {
+                        const possibleTime = parseInt(parts[parts.length - 1]);
+                        if (possibleTime > 1000000000000) ts = possibleTime;
+                    }
+                }
+            }
+            if (!ts) ts = Date.now() + insertIndex; // Garante que cada item do lote tenha um timestamp único
+
+            return {
+                id: item.id || 'ID-' + Math.random().toString(36).substr(2, 9) + '-' + ts,
+                batchId: item.batchId || batchId,
+                tribunal: trib,
+                processo: item.processo || item.numero || "N/A",
+                ano: extractYear(item),
+                boletim: extractBoletim(item),
+                ementa: ementaTexto,
+                timestamp: ts,
+                manualEdit: item.manualEdit || false, // Selo de imunidade
+                original: item
+            };
+        }
+
+        async function syncUI() {
+            fullData = await getAll('geral');
+            
+            let needsUpdate = false;
+            fullData.forEach(d => { 
+                if (d.manualEdit) return; // SE FOI EDITADO, NÃO MEXE MAIS.
+                
+                const correctYear = extractYear(d.original || d);
+                if(d.ano !== correctYear) { d.ano = correctYear; needsUpdate = true; }
+                const correctBoletim = extractBoletim(d);
+                if(d.boletim !== correctBoletim) { d.boletim = correctBoletim; needsUpdate = true; }
+                if(!d.timestamp) { d.timestamp = getRealTimestamp(d); needsUpdate = true; }
+            });
+            if (needsUpdate) await saveAll('geral', fullData); 
+
+            document.getElementById('grandTotal').innerText = fullData.length.toLocaleString('pt-BR');
+            renderLinkManager();
+            renderSideFilters();
+            executeSearch();
+        }
+
+        function handleSearchInput() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => { resetPageAndSearch(); }, 300); 
+        }
+
+        function resetPageAndSearch() { currentPage = 1; executeSearch(); }
+        function changePage(step) { currentPage += step; executeSearch(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+        function clearFilters() {
+            selectedTribunais = [];
+            selectedYears = [];
+            document.getElementById('searchInput').value = '';
+            resetPageAndSearch();
+        }
+
+        function highlight(text, query) { 
+            if (!text || !query || query.length < 3) return text; 
+            const isExact = document.getElementById('exactMatch').checked;
+            const terms = isExact ? [query.trim()] : query.trim().split(/\s+/).filter(t => t.length > 2);
+            let res = text;
+            terms.forEach(term => {
+                const pat = normalizar(term).split('').map(c => ({'a':'[aàáâãä]','e':'[eèéêë]','i':'[iìíîï]','o':'[oòóôõö]','u':'[uùúûü]','c':'[cç]','n':'[nñ]'}[c] || c)).join(''); 
+                res = res.replace(new RegExp(`(${pat})(?![^<]*>)`, 'gi'), '<mark>$1</mark>'); 
+            });
+            return res;
+        }
+
+        function executeSearch() {
+            const queryRaw = document.getElementById('searchInput').value;
+            const isExact = document.getElementById('exactMatch').checked;
+            const sortOrder = document.getElementById('sortOrder').value;
+            const q = normalizar(queryRaw).trim();
+            const terms = isExact ? [q] : q.split(/\s+/).filter(t => t.length > 0);
+
+            let textFiltered = fullData.filter(d => {
+                if (!q) return true;
+                let searchBody = normalizar(`${d.tribunal} ${d.processo} ${d.boletim||''} ${d.ementa}`);
+                return terms.every(term => searchBody.includes(term));
+            });
+
+            let forTribunalCount = textFiltered.filter(d => selectedYears.length === 0 || selectedYears.includes(d.ano));
+            let forYearCount = textFiltered.filter(d => selectedTribunais.length === 0 || selectedTribunais.includes(d.tribunal));
+
+            updateSideFilters(forTribunalCount, forYearCount);
+
+            let filteredTotal = textFiltered.filter(d => {
+                if (selectedTribunais.length > 0 && !selectedTribunais.includes(d.tribunal)) return false;
+                if (selectedYears.length > 0 && !selectedYears.includes(d.ano)) return false;
+                return true;
+            });
+
+            lastFilteredData = filteredTotal;
+
+            filteredTotal.sort((a, b) => {
+                if (sortOrder === 'recent') {
+                    const diff = getRealTimestamp(b) - getRealTimestamp(a);
+                    return diff !== 0 ? diff : b.id.localeCompare(a.id);
+                }
+                if (sortOrder === 'old') {
+                    const diff = getRealTimestamp(a) - getRealTimestamp(b);
+                    return diff !== 0 ? diff : a.id.localeCompare(b.id);
+                }
+                
+                if (sortOrder === 'az') return normalizar(a.tribunal + a.processo).localeCompare(normalizar(b.tribunal + b.processo));
+                if (sortOrder === 'za') return normalizar(b.tribunal + b.processo).localeCompare(normalizar(a.tribunal + a.processo));
+                
+                const getYearValue = (y) => {
+                    if (y === 'Não Categorizado') return -2;
+                    if (y === 'SÚMULAS') return -1;
+                    return parseInt(y);
+                };
+                
+                if (sortOrder === 'year_new') return getYearValue(b.ano) - getYearValue(a.ano);
+                if (sortOrder === 'year_old') return getYearValue(a.ano) - getYearValue(b.ano);
+                
+                return 0;
+            });
+
+            const totalResults = filteredTotal.length;
+            const totalPages = Math.ceil(totalResults / pageSize);
+            const start = (currentPage - 1) * pageSize;
+            const pageResults = filteredTotal.slice(start, start + pageSize);
+
+            document.getElementById('resultsCount').innerText = `${totalResults} RESULTADO(S)`;
+
+            const pagControls = document.getElementById('paginationControls');
+            if (totalResults > pageSize) {
+                pagControls.classList.remove('hidden');
+                document.getElementById('prevPage').disabled = currentPage <= 1;
+                document.getElementById('nextPage').disabled = currentPage >= totalPages;
+                document.getElementById('pageIndicator').innerText = `Página ${currentPage} de ${totalPages}`;
+            } else {
+                pagControls.classList.add('hidden');
+            }
+
+            document.getElementById('decisionList').innerHTML = pageResults.map(dec => {
+                const color = TRIBUNAL_COLORS[dec.tribunal] || '#64748b';
+                const isSelected = basket.includes(dec.id);
+                const basketBtn = `<button onclick="toggleBasket('${dec.id}')" class="p-2.5 rounded-xl border transition ${isSelected ? 'bg-emerald-100 border-emerald-300 text-emerald-700' : 'bg-slate-50 hover:bg-emerald-50'}" title="Adicionar à Cesta">${isSelected ? '✅' : '📥'}</button>`;
+                
+                return `<div class="card-decision" style="border-left-color: ${color}">
+                    <div class="absolute top-6 right-6 flex gap-2">
+                        <button onclick="openExternalLink('${dec.tribunal}', '${dec.processo}')" class="p-2.5 rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50 transition shadow-sm" title="Consultar Inteiro Teor">🔗 Externo</button>
+                        
+                        <button onclick="openEditModal('${dec.id}')" class="p-2.5 rounded-xl border border-transparent text-slate-300 hover:text-amber-500 hover:bg-amber-50 transition" title="Editar Decisão">✏️</button>
+                        
+                        ${basketBtn}
+                        <button onclick="deleteIndividual('${dec.id}')" class="p-2.5 hover:bg-rose-50 rounded-xl border border-transparent text-slate-300 hover:text-rose-500 transition" title="Apagar da Base">🗑️</button>
+                    </div>
+                    
+                    <div class="flex flex-wrap items-center gap-3 mb-5 text-[11px] uppercase font-bold text-slate-400">
+                        <span class="px-3 py-1 rounded-md text-white shadow-sm tracking-widest" style="background: ${color}">${dec.tribunal}</span> 
+                        <span class="text-blue-600 font-black text-sm">${dec.processo}</span>
+                        ${dec.ano !== 'Não Categorizado' ? `<span class="bg-slate-100 px-2 py-0.5 rounded text-slate-600 border border-slate-200 ${dec.ano === 'SÚMULAS' ? 'bg-amber-100 border-amber-300 text-amber-700' : ''}">${dec.ano}</span>` : ''}
+                        ${dec.boletim ? `<span class="bg-purple-50 px-2 py-0.5 rounded text-purple-700 border border-purple-200 tracking-wider">📖 ${highlight(dec.boletim, queryRaw)}</span>` : ''}
+                    </div>
+                    
+                    <div class="text-slate-900 text-[15px] leading-relaxed font-medium text-justify whitespace-pre-wrap pr-10">${highlight(dec.ementa, queryRaw)}</div>
+                </div>`;
+            }).join('') || `<div class="text-center py-20"><p class="text-slate-400 uppercase font-black tracking-widest text-sm">Nenhuma decisão encontrada</p></div>`;
+        }
+
+        // FUNÇÕES DE EDIÇÃO RÁPIDA (Com Selo de Imunidade)
+        function openEditModal(id) {
+            const dec = fullData.find(d => d.id === id);
+            if (!dec) return;
+            currentEditId = id;
+            
+            document.getElementById('editTribunal').value = dec.tribunal || '';
+            document.getElementById('editProcesso').value = dec.processo || '';
+            document.getElementById('editAno').value = dec.ano || '';
+            document.getElementById('editBoletim').value = dec.boletim || '';
+            document.getElementById('editEmenta').value = dec.ementa || '';
+            
+            document.getElementById('editModal').classList.remove('hidden');
+            document.getElementById('editModal').classList.add('flex');
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.add('hidden');
+            document.getElementById('editModal').classList.remove('flex');
+            currentEditId = null;
+        }
+
+        async function saveEdit() {
+            if (!currentEditId) return;
+            const decIndex = fullData.findIndex(d => d.id === currentEditId);
+            if (decIndex === -1) return;
+
+            const dec = fullData[decIndex];
+            
+            dec.tribunal = document.getElementById('editTribunal').value.trim();
+            dec.processo = document.getElementById('editProcesso').value.trim();
+            dec.ano = document.getElementById('editAno').value.trim();
+            dec.boletim = document.getElementById('editBoletim').value.trim();
+            dec.ementa = document.getElementById('editEmenta').value.trim();
+            
+            dec.manualEdit = true; // SELO DE IMUNIDADE (O sistema nunca mais altera as configs deste card)
+
+            const tx = db.transaction('geral', 'readwrite');
+            const store = tx.objectStore('geral');
+            await store.put(dec);
+
+            tx.oncomplete = () => {
+                closeEditModal();
+                syncUI(); 
+            };
+        }
+
+        function renderSideFilters() { updateSideFilters(fullData, fullData); }
+
+        function updateSideFilters(dataForTrib, dataForYear) {
+            const tribCounts = dataForTrib.reduce((acc, d) => { acc[d.tribunal] = (acc[d.tribunal] || 0) + 1; return acc; }, {});
+            const allTribs = [...new Set(fullData.map(d => d.tribunal))];
+            
+            const tribsToShow = allTribs.filter(n => (tribCounts[n] || 0) > 0 || selectedTribunais.includes(n)).sort((a,b) => (tribCounts[b]||0) - (tribCounts[a]||0));
+            
+            document.getElementById('filterTribunalList').innerHTML = tribsToShow.map(n => {
+                const color = TRIBUNAL_COLORS[n] || '#64748b';
+                const isChecked = selectedTribunais.includes(n);
+                const count = tribCounts[n] || 0;
+                
+                return `
+                <div class="group flex justify-between items-center p-2.5 mb-1.5 rounded-xl border border-slate-100 bg-white hover:shadow-md transition cursor-pointer" style="border-left-width: 4px; border-left-color: ${color};" onclick="toggleFilter('tribunal', '${n}')">
+                    <div class="flex items-center gap-3 flex-1">
+                        <input type="checkbox" ${isChecked ? 'checked' : ''} class="rounded text-blue-600 pointer-events-none">
+                        <span class="text-xs font-black uppercase text-slate-700">${n}</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <span class="text-xs font-bold text-slate-400">${count}</span>
+                        <button onclick="event.stopPropagation(); selectOnly('tribunal', '${n}')" class="opacity-0 group-hover:opacity-100 text-[9px] font-black bg-slate-100 text-slate-600 px-2 py-1 rounded uppercase hover:bg-blue-600 hover:text-white transition">Apenas</button>
+                        <button onclick="event.stopPropagation(); deleteByTribunal('${n}')" class="opacity-0 group-hover:opacity-100 text-[10px] bg-rose-50 text-rose-500 px-1.5 py-0.5 rounded hover:bg-rose-500 hover:text-white transition" title="Apagar órgão inteiro">🗑️</button>
+                    </div>
+                </div>`;
+            }).join('') || '<p class="text-xs text-slate-400 italic">Nenhum órgão reflete a busca.</p>';
+
+            const yearCounts = dataForYear.reduce((acc, d) => { acc[d.ano] = (acc[d.ano] || 0) + 1; return acc; }, {});
+            const allYears = [...new Set(fullData.map(d => d.ano))];
+            
+            const yearsToShow = allYears.filter(y => (yearCounts[y] || 0) > 0 || selectedYears.includes(y));
+            
+            yearsToShow.sort((a, b) => {
+                if (a === 'Não Categorizado') return 1;
+                if (b === 'Não Categorizado') return -1;
+                if (a === 'SÚMULAS') return 1;
+                if (b === 'SÚMULAS') return -1;
+                return parseInt(b) - parseInt(a);
+            });
+            
+            const yearHtml = yearsToShow.map(y => {
+                const isChecked = selectedYears.includes(y);
+                const count = yearCounts[y] || 0;
+                
+                let activeClass = '';
+                if (isChecked) {
+                    activeClass = y === 'SÚMULAS' ? 'bg-amber-500 text-white border-amber-600' : 'bg-blue-600 text-white border-blue-600';
+                } else {
+                    activeClass = y === 'SÚMULAS' ? 'bg-amber-50 text-amber-700 border-amber-200 hover:border-amber-400' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-400';
+                }
+                
+                const numberColor = isChecked ? (y === 'SÚMULAS' ? 'text-amber-200' : 'text-blue-200') : 'text-slate-400';
+                
+                return `<button onclick="toggleFilter('year', '${y}')" class="px-3 py-2 rounded-lg border ${activeClass} text-[10px] font-black uppercase shadow-sm transition inline-flex items-center gap-1">${y} <span class="${numberColor} font-bold">(${count})</span></button>`;
+            }).join('');
+            
+            document.getElementById('filterYearList').innerHTML = `<div class="flex flex-wrap gap-2">${yearHtml || '<p class="text-xs text-slate-400 italic">Nenhum ano reflete a busca.</p>'}</div>`;
+        }
+
+        function toggleAll(type) {
+            if (type === 'tribunal') selectedTribunais = selectedTribunais.length > 0 ? [] : [...new Set(fullData.map(d => d.tribunal))];
+            if (type === 'year') selectedYears = selectedYears.length > 0 ? [] : [...new Set(fullData.map(d => d.ano))];
+            resetPageAndSearch();
+        }
+
+        function selectOnly(type, val) {
+            if (type === 'tribunal') selectedTribunais = [val];
+            if (type === 'year') selectedYears = [val];
+            resetPageAndSearch();
+        }
+
+        function toggleFilter(type, val) {
+            if (type === 'tribunal') selectedTribunais = selectedTribunais.includes(val) ? selectedTribunais.filter(v => v !== val) : [...selectedTribunais, val];
+            if (type === 'year') selectedYears = selectedYears.includes(val) ? selectedYears.filter(v => v !== val) : [...selectedYears, val];
+            resetPageAndSearch();
+        }
+
+        function toggleBasket(id) { 
+            basket = basket.includes(id) ? basket.filter(i => i !== id) : [...basket, id]; 
+            document.getElementById('reportBtn').classList.toggle('hidden', basket.length === 0); 
+            document.getElementById('basketQty').innerText = basket.length; 
+            resetPageAndSearch(); 
+        }
+
+        async function generateBasketReport() { 
+            const all = await getAll('geral'); 
+            const sel = all.filter(d => basket.includes(d.id)); 
+            if(sel.length === 0) return alert('Cesta vazia.');
+            
+            let txt = "CESTA DE JURISPRUDÊNCIA\n\n"; 
+            sel.forEach((s, i) => { 
+                txt += `${i + 1}. [${s.tribunal}] Processo: ${s.processo}\nAno: ${s.ano}\nBoletim: ${s.boletim || 'N/A'}\nEmenta: ${s.ementa}\n\n----------------------------------------\n\n`; 
+            }); 
+            
+            const b = new Blob([txt], {type: "text/plain;charset=utf-8"}); 
+            const l = document.createElement("a"); 
+            l.href = URL.createObjectURL(b); 
+            l.download = `Cesta_Jurisprudencia_${new Date().getTime()}.txt`; 
+            l.click(); 
+        }
+
+        function exportarCSV() {
+            const dataToExport = lastFilteredData;
+            if (dataToExport.length === 0) return alert("Sua pesquisa atual não possui decisões para exportar.");
+
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+            csvContent += "Tribunal;Processo;Ano;Boletim;Ementa\n";
+
+            dataToExport.forEach(d => {
+                let tribunal = `"${d.tribunal || ''}"`;
+                let proc = `"${d.processo || ''}"`;
+                let ano = `"${d.ano || ''}"`;
+                let bol = `"${d.boletim || ''}"`;
+                let ementa = `"${(d.ementa || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+                csvContent += `${tribunal};${proc};${ano};${bol};${ementa}\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `Jurisprudencia_Export_${new Date().getTime()}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        }
+
+        async function getAll(store) { return new Promise(r => { if(!db) return r([]); const t = db.transaction(store, 'readonly').objectStore(store).getAll(); t.onsuccess = () => r(t.result || []); }); }
+        async function saveAll(store, data) { return new Promise(r => { const t = db.transaction(store, 'readwrite'); const s = t.objectStore(store); data.forEach(i => s.put(i)); t.oncomplete = () => r(); }); }
+        
+        function openImportModal() { document.getElementById('importModal').classList.remove('hidden'); }
+        function closeImportModal() { document.getElementById('importModal').classList.add('hidden'); }
+        
+        async function processImport() { 
+            const paste = document.getElementById('jsonPasteArea').value; 
+            if (paste) { 
+                try { 
+                    const data = JSON.parse(paste); 
+                    const batchId = "Lote_" + Date.now(); 
+                    const mappedList = (Array.isArray(data) ? data : [data]).map((item, idx) => mapData(item, batchId, idx));
+                    await saveAll('geral', mappedList); 
+                    syncUI(); closeImportModal(); document.getElementById('jsonPasteArea').value = ''; 
+                } catch(e) { alert("O texto colado não é um JSON válido."); } 
+            } 
+        }
+        
+        async function handleFileSelect(e) { 
+            const file = e.target.files[0]; if (!file) return; 
+            const r = new FileReader(); 
+            r.onload = async (ev) => { 
+                try { 
+                    const data = JSON.parse(ev.target.result); 
+                    if (Array.isArray(data)) { 
+                        const batchId = "Lote_" + Date.now();
+                        const mappedList = data.map((d, idx) => mapData(d, batchId, idx));
+                        await saveAll('geral', mappedList); 
+                        syncUI(); closeImportModal(); 
+                    } else if (data.geral) { 
+                        if(confirm("Substituir a base atual por este Backup completo?")) {
+                            const tg = db.transaction(['geral'], 'readwrite'); 
+                            tg.objectStore('geral').clear(); 
+                            tg.oncomplete = async () => { 
+                                await saveAll('geral', (data.geral || []).map((d, idx) => mapData(d, 'Backup', idx))); 
+                                location.reload(); 
+                            }; 
+                        }
+                    } 
+                } catch (err) { alert("Erro ao processar o arquivo."); } 
+            }; 
+            r.readAsText(file); 
+        }
+
+        async function exportarBackup() { 
+            getAll('geral').then(g => { 
+                const b = new Blob([JSON.stringify({ geral: g })], { type: "application/json" }); 
+                const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "juris_backup.json"; a.click(); 
+            }); 
+        }
+
+        function clearSystem() { if(confirm("Certeza que deseja zerar toda a base?")) { indexedDB.deleteDatabase(dbName); localStorage.removeItem('juris_links_v1'); location.reload(); } }
+        async function deleteIndividual(id) { if(confirm("Apagar esta decisão?")) { const trans = db.transaction('geral', 'readwrite'); trans.objectStore('geral').delete(id); trans.oncomplete = () => syncUI(); } }
+        
+        async function deleteByTribunal(tribunal) {
+            if(confirm(`ATENÇÃO: Você deseja apagar TODAS as decisões do órgão ${tribunal}?\n\nEsta ação não pode ser desfeita.`)) {
+                const all = await getAll('geral');
+                const toKeep = all.filter(d => d.tribunal !== tribunal);
+                
+                const tx = db.transaction('geral', 'readwrite');
+                const store = tx.objectStore('geral');
+                await store.clear();
+                toKeep.forEach(d => store.put(d));
+                
+                tx.oncomplete = () => {
+                    selectedTribunais = selectedTribunais.filter(t => t !== tribunal);
+                    syncUI();
+                };
+            }
+        }
+
+        async function undoLastBatch() { 
+            const all = await getAll('geral'); 
+            const batches = [...new Set(all.map(d => d.batchId).filter(b => b && !b.includes('Backup') && b !== 'Legado'))].sort().reverse(); 
+            if(batches.length === 0) return alert("Não há lotes recentes para desfazer."); 
+            const last = batches[0]; 
+            if(confirm(`Desfazer a importação do lote: ${last}?`)) { 
+                const tx = db.transaction('geral', 'readwrite'); 
+                const store = tx.objectStore('geral'); 
+                await store.clear(); 
+                all.forEach(d => { if(d.batchId !== last) store.put(d); }); 
+                tx.oncomplete = () => syncUI(); 
+            } 
+        }
+    </script>
+</body>
+</html>
