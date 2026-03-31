@@ -300,7 +300,7 @@
         }
 
         // ==========================================
-        // LINK MANAGER (AGORA SALVA EM TEMPO REAL)
+        // LINK MANAGER
         // ==========================================
         let tribunalLinks = JSON.parse(localStorage.getItem('juris_links_v1')) || {};
         let linkTypingTimeout;
@@ -654,7 +654,6 @@
             const data = await response.json();
             
             if (!response.ok) {
-                // Extrai a mensagem de erro específica da API do Google para ajudar a diagnosticar
                 const errorMsg = data.error && data.error.message ? data.error.message : response.statusText;
                 throw new Error(errorMsg);
             }
@@ -698,14 +697,15 @@
                 const answer = await callGeminiAPI(prompt);
                 appendToChat(answer, false);
             } catch (e) {
-                // Agora o erro exibe o motivo real de falha (ex: API_KEY_INVALID)
                 appendToChat(`❌ Erro detectado: <b>${e.message}</b>. Por favor, verifique se a sua chave está correta.`, false);
             } finally {
                 btnText.innerText = 'Enviar à IA';
             }
         }
-        // =================================================
 
+        // =================================================
+        // SIDEBAR FILTERS & DELETE ORGAN
+        // =================================================
         function updateSideFilters(dataForTrib, dataForYear) {
             const tribCounts = dataForTrib.reduce((acc, d) => { acc[d.tribunal] = (acc[d.tribunal] || 0) + 1; return acc; }, {});
             const allTribs = [...new Set(fullData.map(d => d.tribunal))];
@@ -726,6 +726,7 @@
                     <div class="flex items-center gap-1">
                         <span class="text-xs font-bold text-slate-400">${count}</span>
                         <button onclick="event.stopPropagation(); selectOnly('tribunal', '${n}')" class="opacity-0 group-hover:opacity-100 text-[9px] font-black bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-1 rounded uppercase hover:bg-blue-600 hover:text-white transition">Apenas</button>
+                        <button onclick="event.stopPropagation(); deleteByTribunal('${n}')" class="opacity-0 group-hover:opacity-100 text-[10px] bg-rose-50 dark:bg-rose-900/30 text-rose-500 px-1.5 py-0.5 rounded hover:bg-rose-500 hover:text-white transition" title="Apagar órgão inteiro">🗑️</button>
                     </div>
                 </div>`;
             }).join('') || '<p class="text-xs text-slate-400 italic">Nenhum órgão reflete a busca.</p>';
@@ -779,6 +780,9 @@
             resetPageAndSearch();
         }
 
+        // =================================================
+        // EDIT & DATA MANAGEMENT
+        // =================================================
         function openEditModal(id) {
             const dec = fullData.find(d => d.id === id);
             if (!dec) return;
@@ -907,6 +911,24 @@
         function clearSystem() { if(confirm("Zerar base?")) { indexedDB.deleteDatabase(dbName); localStorage.clear(); location.reload(); } }
         async function deleteIndividual(id) { if(confirm("Apagar decisão?")) { const trans = db.transaction('geral', 'readwrite'); trans.objectStore('geral').delete(id); trans.oncomplete = () => { syncUI(); showToast('🗑️ Decisão apagada!'); }; } }
         
+        async function deleteByTribunal(tribunal) {
+            if(confirm(`ATENÇÃO: Você deseja apagar TODAS as decisões do órgão ${tribunal}?\n\nEsta ação não pode ser desfeita.`)) {
+                const all = await getAll('geral');
+                const toKeep = all.filter(d => d.tribunal !== tribunal);
+                
+                const tx = db.transaction('geral', 'readwrite');
+                const store = tx.objectStore('geral');
+                await store.clear();
+                toKeep.forEach(d => store.put(d));
+                
+                tx.oncomplete = () => {
+                    selectedTribunais = selectedTribunais.filter(t => t !== tribunal);
+                    syncUI();
+                    showToast(`🗑️ Todas as decisões do ${tribunal} foram apagadas!`);
+                };
+            }
+        }
+
         async function undoLastBatch() { 
             const all = await getAll('geral'); 
             const batches = [...new Set(all.map(d => d.batchId).filter(b => b && !b.includes('Backup') && b !== 'Legado'))].sort().reverse(); 
