@@ -262,10 +262,11 @@
         let currentEditId = null;
 
         const TRIBUNAL_COLORS = { 'TCU': '#2563eb', 'TCM-Rio': '#10b981', 'TCE-RJ': '#8b5cf6', 'TCDF': '#f59e0b', 'TCE-SC': '#e11d48', 'TCM-SP': '#f97316', 'TCM-BA': '#14b8a6', 'DEFAULT': '#64748b' };
-        
-        // Conversão blindada contra números quebrados
-        const normalizar = (s) => s ? String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
+        const normalizar = (s) => s ? s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
 
+        // ==========================================
+        // TOAST NOTIFICATION SYSTEM
+        // ==========================================
         let toastTimeout;
         function showToast(msg) {
             const toast = document.getElementById('toast');
@@ -277,6 +278,9 @@
             }, 3000);
         }
 
+        // ==========================================
+        // DARK MODE & API KEY LOGIC
+        // ==========================================
         function toggleDarkMode() {
             document.documentElement.classList.toggle('dark');
             const isDark = document.documentElement.classList.contains('dark');
@@ -295,6 +299,9 @@
             showToast('✅ Chave da IA salva com sucesso!');
         }
 
+        // ==========================================
+        // LINK MANAGER (AGORA SALVA EM TEMPO REAL)
+        // ==========================================
         let tribunalLinks = JSON.parse(localStorage.getItem('juris_links_v1')) || {};
         let linkTypingTimeout;
         
@@ -329,6 +336,9 @@
             }
         }
 
+        // ==========================================
+        // CORE DATABASE INIT
+        // ==========================================
         const getRealTimestamp = (d) => {
             if (d.timestamp) return d.timestamp;
             const parts = d.id.split('-');
@@ -360,15 +370,13 @@
 
         function extractYear(item) {
             const currentYear = new Date().getFullYear();
-            
-            // Garantindo que independente do que vier (número, nulo, texto), a rotina não quebre
-            const proc = (item.processo != null ? String(item.processo) : "").trim().toUpperCase();
-            const num = (item.numero != null ? String(item.numero) : "").trim().toUpperCase();
-            const nat = (item.natureza != null ? String(item.natureza) : (item.tipo != null ? String(item.tipo) : "")).trim().toUpperCase();
+            const proc = (item.processo || "").trim().toUpperCase();
+            const num = (item.numero || "").trim().toUpperCase();
+            const nat = (item.natureza || item.tipo || "").trim().toUpperCase();
 
             if (nat === 'SÚMULA' || nat === 'SUMULA' || /^S[ÚU]MULA\b/.test(proc) || /^S[ÚU]MULA\b/.test(num)) return "SÚMULAS";
 
-            const trib = item.tribunal ? String(item.tribunal) : '';
+            const trib = item.tribunal || '';
             const textToSearch = `${proc} ${num}`;
 
             if (trib === 'TCE-SC') {
@@ -386,9 +394,9 @@
             }
 
             const textosSeguros = [];
-            if (item.data_decisao) textosSeguros.push(String(item.data_decisao));
+            if (item.data_decisao) textosSeguros.push(item.data_decisao);
             textosSeguros.push(textToSearch);
-            if (item.original && item.original.data_decisao) textosSeguros.push(String(item.original.data_decisao));
+            if (item.original && item.original.data_decisao) textosSeguros.push(item.original.data_decisao);
             
             const textoBusca = textosSeguros.join(" ");
             const matches = textoBusca.match(/[\/\.-](199\d|20[0-2]\d)\b/g);
@@ -406,16 +414,13 @@
 
         function mapData(item, batchId = 'Legado', insertIndex = 0) {
             if(!item) return null;
-            
-            // Garantindo formatação cega a falhas
-            let trib = item.tribunal != null ? String(item.tribunal) : 'Desconhecido';
+            let trib = item.tribunal || 'Desconhecido';
             if (trib.toUpperCase().replace(/[\s\.-]/g, '') === 'TCMSP') trib = 'TCM-SP';
-            
-            let ementaTexto = String(item.ementa || item.texto || item.resumo_analitico || item.resumo || "Conteúdo não disponível.");
+            let ementaTexto = item.ementa || item.texto || item.resumo_analitico || item.resumo || "Conteúdo não disponível.";
 
             let ts = item.timestamp;
             if (!ts && item.id) {
-                const parts = String(item.id).split('-');
+                const parts = item.id.split('-');
                 if (parts.length > 0) {
                     const possibleTime = parseInt(parts[parts.length - 1]);
                     if (possibleTime > 1000000000000) ts = possibleTime;
@@ -427,7 +432,7 @@
                 id: item.id || 'ID-' + Math.random().toString(36).substr(2, 9) + '-' + ts,
                 batchId: item.batchId || batchId,
                 tribunal: trib,
-                processo: item.processo != null ? String(item.processo) : (item.numero != null ? String(item.numero) : "N/A"),
+                processo: item.processo || item.numero || "N/A",
                 ano: extractYear(item),
                 boletim: extractBoletim(item),
                 legislacao: extractLegislacao(item),
@@ -459,6 +464,9 @@
             executeSearch();
         }
 
+        // ==========================================
+        // SEARCH & RENDER
+        // ==========================================
         function renderSkeletons() {
             const skeletonHTML = `
                 <div class="card-decision skeleton dark:bg-slate-800 dark:border-slate-700">
@@ -615,6 +623,7 @@
             }).join('') || `<div class="text-center py-20"><p class="text-slate-400 uppercase font-black tracking-widest text-sm">Nenhuma decisão encontrada</p></div>`;
         }
 
+        // ================= IA GEMINI LOGIC =================
         function openAiDrawer() {
             if (!geminiKey) return alert("Abra a aba 'Configurar IA Gemini' na barra lateral esquerda, cole sua chave e clique em Salvar.");
             if (lastFilteredData.length === 0) return alert("Faça uma pesquisa ou filtro que retorne decisões para que a IA possa analisá-las.");
@@ -645,6 +654,7 @@
             const data = await response.json();
             
             if (!response.ok) {
+                // Extrai a mensagem de erro específica da API do Google para ajudar a diagnosticar
                 const errorMsg = data.error && data.error.message ? data.error.message : response.statusText;
                 throw new Error(errorMsg);
             }
@@ -688,11 +698,13 @@
                 const answer = await callGeminiAPI(prompt);
                 appendToChat(answer, false);
             } catch (e) {
+                // Agora o erro exibe o motivo real de falha (ex: API_KEY_INVALID)
                 appendToChat(`❌ Erro detectado: <b>${e.message}</b>. Por favor, verifique se a sua chave está correta.`, false);
             } finally {
                 btnText.innerText = 'Enviar à IA';
             }
         }
+        // =================================================
 
         function updateSideFilters(dataForTrib, dataForYear) {
             const tribCounts = dataForTrib.reduce((acc, d) => { acc[d.tribunal] = (acc[d.tribunal] || 0) + 1; return acc; }, {});
@@ -855,10 +867,7 @@
                     await saveAll('geral', mappedList); 
                     await syncUI(); closeImportModal(); document.getElementById('jsonPasteArea').value = ''; 
                     alert(`Importação Sucesso!\nNovas: ${mappedList.length}\nTotal: ${fullData.length}`);
-                } catch(e) { 
-                    alert("Erro ao processar o texto colado.\nDetalhe do erro: " + e.message); 
-                    console.error(e); 
-                } 
+                } catch(e) { alert("JSON inválido."); } 
             } 
         }
         
@@ -884,10 +893,7 @@
                             }; 
                         }
                     } 
-                } catch (err) { 
-                    alert("Erro ao ler o arquivo selecionado.\nDetalhe do erro: " + err.message); 
-                    console.error(err); 
-                } 
+                } catch (err) { alert("Erro arquivo."); } 
             }; 
             r.readAsText(file); 
         }
@@ -923,4 +929,16 @@
         async function undoLastBatch() { 
             const all = await getAll('geral'); 
             const batches = [...new Set(all.map(d => d.batchId).filter(b => b && !b.includes('Backup') && b !== 'Legado'))].sort().reverse(); 
-            if(batches.length === 0) return alert("Nada recente.");
+            if(batches.length === 0) return alert("Nada recente."); 
+            const last = batches[0]; 
+            if(confirm(`Desfazer lote: ${last}?`)) { 
+                const tx = db.transaction('geral', 'readwrite'); 
+                const store = tx.objectStore('geral'); 
+                await store.clear(); 
+                all.forEach(d => { if(d.batchId !== last) store.put(d); }); 
+                tx.oncomplete = () => { syncUI(); showToast('↩️ Lote desfeito!'); }; 
+            } 
+        }
+    </script>
+</body>
+</html>
