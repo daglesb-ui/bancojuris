@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jurisprudência TC's - v90.0 AI Master</title>
+    <title>Jurisprudência TC's - v90.1 AI & Links Fix</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = { darkMode: 'class' }
@@ -39,14 +39,21 @@
         .custom-scroll::-webkit-scrollbar { width: 6px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .dark .custom-scroll::-webkit-scrollbar-thumb { background: #475569; }
+
+        /* Toast Notification */
+        #toast { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
     </style>
 </head>
 <body class="antialiased text-slate-900 bg-slate-50 dark:bg-slate-900 dark:text-slate-100">
 
+    <div id="toast" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-6 py-3 rounded-full text-xs font-bold shadow-2xl opacity-0 translate-y-10 z-[9999] pointer-events-none flex items-center gap-2">
+        <span id="toastMsg">Salvo com sucesso!</span>
+    </div>
+
     <nav class="h-[70px] bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center px-8 sticky top-0 z-[100] justify-between shadow-sm">
         <div class="flex items-center gap-4">
             <div class="bg-blue-600 p-2.5 rounded-xl text-white shadow-lg shadow-blue-200 dark:shadow-none">⚖️</div>
-            <h1 class="text-xl font-extrabold tracking-tight">Jurisprudência <span class="text-blue-600 dark:text-blue-400">TC's</span> <span class="text-[10px] opacity-20 uppercase font-black ml-1 tracking-widest">v90.0</span></h1>
+            <h1 class="text-xl font-extrabold tracking-tight">Jurisprudência <span class="text-blue-600 dark:text-blue-400">TC's</span> <span class="text-[10px] opacity-20 uppercase font-black ml-1 tracking-widest">v90.1</span></h1>
         </div>
         <div class="flex gap-3 items-center">
             <button onclick="toggleDarkMode()" class="p-2 rounded-xl text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition" title="Alternar Tema Escuro">🌓</button>
@@ -74,7 +81,12 @@
                     <span class="text-purple-400 group-open:rotate-180 transition-transform">▼</span>
                 </summary>
                 <div class="p-4 pt-0 space-y-3">
-                    <input type="password" id="geminiApiKey" onchange="saveApiKey(this.value)" placeholder="Cole sua API Key secreta..." class="w-full p-2.5 text-[10px] font-mono rounded-lg border border-purple-200 dark:border-purple-700 dark:bg-slate-800 dark:text-white outline-none focus:border-purple-500">
+                    <p class="text-[9px] text-purple-600 dark:text-purple-400 font-bold leading-tight">Cole sua chave da API do Google Gemini. Fica salva apenas no seu navegador.</p>
+                    <div class="flex gap-2">
+                        <input type="password" id="geminiApiKey" placeholder="Sua API Key..." class="flex-1 w-full p-2.5 text-[10px] font-mono rounded-lg border border-purple-200 dark:border-purple-700 dark:bg-slate-800 dark:text-white outline-none focus:border-purple-500">
+                        <button onclick="saveApiKey()" class="bg-purple-600 hover:bg-purple-700 text-white px-3 rounded-lg text-[10px] font-bold shadow-sm transition">Salvar</button>
+                    </div>
+                    <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-[9px] text-blue-500 hover:underline block mt-1">Obter chave gratuita ↗</a>
                 </div>
             </details>
 
@@ -252,7 +264,23 @@
         const TRIBUNAL_COLORS = { 'TCU': '#2563eb', 'TCM-Rio': '#10b981', 'TCE-RJ': '#8b5cf6', 'TCDF': '#f59e0b', 'TCE-SC': '#e11d48', 'TCM-SP': '#f97316', 'TCM-BA': '#14b8a6', 'DEFAULT': '#64748b' };
         const normalizar = (s) => s ? s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
 
-        // Dark Mode Logic
+        // ==========================================
+        // TOAST NOTIFICATION SYSTEM
+        // ==========================================
+        let toastTimeout;
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastMsg').innerText = msg;
+            toast.classList.remove('opacity-0', 'translate-y-10');
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-10');
+            }, 3000);
+        }
+
+        // ==========================================
+        // DARK MODE & API KEY LOGIC
+        // ==========================================
         function toggleDarkMode() {
             document.documentElement.classList.toggle('dark');
             const isDark = document.documentElement.classList.contains('dark');
@@ -262,14 +290,55 @@
             document.documentElement.classList.add('dark');
         }
 
-        // IA Key Management
         let geminiKey = localStorage.getItem('gemini_api_key_v1') || '';
         document.getElementById('geminiApiKey').value = geminiKey;
-        function saveApiKey(val) {
-            geminiKey = val.trim();
+        function saveApiKey() {
+            const val = document.getElementById('geminiApiKey').value.trim();
+            geminiKey = val;
             localStorage.setItem('gemini_api_key_v1', geminiKey);
+            showToast('✅ Chave da IA salva com sucesso!');
         }
 
+        // ==========================================
+        // LINK MANAGER (AGORA SALVA EM TEMPO REAL)
+        // ==========================================
+        let tribunalLinks = JSON.parse(localStorage.getItem('juris_links_v1')) || {};
+        let linkTypingTimeout;
+        
+        function renderLinkManager() {
+            const allTribs = [...new Set(fullData.map(d => d.tribunal))].sort();
+            const html = allTribs.map(t => `
+                <div class="flex flex-col gap-1">
+                    <label class="text-[9px] font-black text-blue-600 uppercase">${t}</label>
+                    <input type="text" value="${tribunalLinks[t] || CONFIG_TRIBUNAIS[t] || ''}" oninput="updateLink('${t}', this.value)" placeholder="Link base..." class="w-full p-2 text-[10px] font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white outline-none focus:border-blue-400">
+                </div>
+            `).join('');
+            document.getElementById('linkManagerList').innerHTML = html || '<p class="text-xs text-slate-400">Nenhum órgão na base.</p>';
+        }
+
+        function updateLink(tribunal, url) {
+            tribunalLinks[tribunal] = url.trim();
+            localStorage.setItem('juris_links_v1', JSON.stringify(tribunalLinks));
+            clearTimeout(linkTypingTimeout);
+            linkTypingTimeout = setTimeout(() => {
+                showToast(`🔗 Link do ${tribunal} atualizado!`);
+            }, 800);
+        }
+
+        function openExternalLink(tribunal, processo) {
+            const baseUrl = tribunalLinks[tribunal] || CONFIG_TRIBUNAIS[tribunal];
+            if (baseUrl) {
+                window.open(baseUrl, '_blank');
+            } else {
+                if(confirm(`Link não configurado para o ${tribunal}. Pesquisar no Google?`)) {
+                    window.open(`https://www.google.com/search?q=jurisprudencia+${tribunal.replace(' ', '+')}+${processo.replace(/\//g, '%2F')}`, '_blank');
+                }
+            }
+        }
+
+        // ==========================================
+        // CORE DATABASE INIT
+        // ==========================================
         const getRealTimestamp = (d) => {
             if (d.timestamp) return d.timestamp;
             const parts = d.id.split('-');
@@ -286,24 +355,6 @@
             if(!db.objectStoreNames.contains('geral')) db.createObjectStore('geral', { keyPath: 'id' });
         };
         request.onsuccess = (e) => { db = e.target.result; syncUI(); };
-
-        let tribunalLinks = JSON.parse(localStorage.getItem('juris_links_v1')) || {};
-        
-        function renderLinkManager() {
-            const allTribs = [...new Set(fullData.map(d => d.tribunal))].sort();
-            const html = allTribs.map(t => `
-                <div class="flex flex-col gap-1">
-                    <label class="text-[9px] font-black text-blue-600 uppercase">${t}</label>
-                    <input type="text" value="${tribunalLinks[t] || CONFIG_TRIBUNAIS[t] || ''}" onchange="updateLink('${t}', this.value)" placeholder="Link base..." class="w-full p-2 text-[10px] font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white outline-none focus:border-blue-400">
-                </div>
-            `).join('');
-            document.getElementById('linkManagerList').innerHTML = html || '<p class="text-xs text-slate-400">Nenhum órgão na base.</p>';
-        }
-
-        function updateLink(tribunal, url) {
-            tribunalLinks[tribunal] = url.trim();
-            localStorage.setItem('juris_links_v1', JSON.stringify(tribunalLinks));
-        }
 
         function extractLegislacao(item) {
             const legRaw = item.legislacao || item.artigos_lei || item.legislacao_citada || item.original?.legislacao_citada;
@@ -384,7 +435,7 @@
                 processo: item.processo || item.numero || "N/A",
                 ano: extractYear(item),
                 boletim: extractBoletim(item),
-                legislacao: extractLegislacao(item), // Extrai leis
+                legislacao: extractLegislacao(item),
                 ementa: ementaTexto,
                 timestamp: ts,
                 manualEdit: item.manualEdit || false,
@@ -403,8 +454,6 @@
                 const correctBoletim = extractBoletim(d);
                 if(d.boletim !== correctBoletim) { d.boletim = correctBoletim; needsUpdate = true; }
                 if(!d.timestamp) { d.timestamp = getRealTimestamp(d); needsUpdate = true; }
-                
-                // Atualização legada para legislação
                 if(d.legislacao === undefined) { d.legislacao = extractLegislacao(d); needsUpdate = true; }
             });
             if (needsUpdate) await saveAll('geral', fullData); 
@@ -415,6 +464,9 @@
             executeSearch();
         }
 
+        // ==========================================
+        // SEARCH & RENDER
+        // ==========================================
         function renderSkeletons() {
             const skeletonHTML = `
                 <div class="card-decision skeleton dark:bg-slate-800 dark:border-slate-700">
@@ -444,7 +496,6 @@
             resetPageAndSearch();
         }
 
-        // Função para setar termo na barra pelo clique na Legislação
         function filterByLegis(term) {
             document.getElementById('searchInput').value = term;
             handleSearchInput();
@@ -574,7 +625,7 @@
 
         // ================= IA GEMINI LOGIC =================
         function openAiDrawer() {
-            if (!geminiKey) return alert("Por favor, cole a sua chave da API do Gemini na aba de Configuração na barra lateral primeiro.");
+            if (!geminiKey) return alert("Abra a aba 'Configurar IA Gemini' na barra lateral esquerda, cole sua chave e clique em Salvar.");
             if (lastFilteredData.length === 0) return alert("Faça uma pesquisa ou filtro que retorne decisões para que a IA possa analisá-las.");
             
             document.getElementById('aiDrawerOverlay').classList.remove('hidden');
@@ -599,8 +650,15 @@
                     systemInstruction: { parts: [{text: "Você é um assistente de auditor de controle externo. Responda em português, focando na jurisprudência brasileira."}]}
                 })
             });
-            if (!response.ok) throw new Error("Erro na API: " + response.statusText);
+            
             const data = await response.json();
+            
+            if (!response.ok) {
+                // Extrai a mensagem de erro específica da API do Google para ajudar a diagnosticar
+                const errorMsg = data.error && data.error.message ? data.error.message : response.statusText;
+                throw new Error(errorMsg);
+            }
+            
             return data.candidates[0].content.parts[0].text;
         }
 
@@ -609,7 +667,6 @@
             const colorClass = isUser ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 ml-8' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 mr-8';
             const title = isUser ? 'Você' : 'Juris AI';
             
-            // Simple Markdown parser for bold
             const formattedText = text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
 
             const html = `
@@ -633,7 +690,6 @@
             const btnText = document.getElementById('aiBtnText');
             btnText.innerHTML = '<span class="loader border-white border-t-white"></span> Pensando...';
 
-            // Pega top 30 decisões da tela atual para não estourar tokens básicos
             const contextDecisions = lastFilteredData.slice(0, 30).map(d => `[${d.tribunal} - ${d.ano}] Processo: ${d.processo}\nEmenta: ${d.ementa}`).join('\n\n');
             
             const prompt = `Baseado estritamente nas decisões abaixo fornecidas pelo banco de dados local do auditor, responda à pergunta: "${userText}".\n\nDECISÕES DE CONTEXTO:\n${contextDecisions}`;
@@ -642,7 +698,8 @@
                 const answer = await callGeminiAPI(prompt);
                 appendToChat(answer, false);
             } catch (e) {
-                appendToChat("Desculpe, ocorreu um erro ao contactar a IA. Verifique sua API Key ou sua conexão.", false);
+                // Agora o erro exibe o motivo real de falha (ex: API_KEY_INVALID)
+                appendToChat(`❌ Erro detectado: <b>${e.message}</b>. Por favor, verifique se a sua chave está correta.`, false);
             } finally {
                 btnText.innerText = 'Enviar à IA';
             }
@@ -722,7 +779,6 @@
             resetPageAndSearch();
         }
 
-        // Editar Logic
         function openEditModal(id) {
             const dec = fullData.find(d => d.id === id);
             if (!dec) return;
@@ -760,10 +816,9 @@
             const store = tx.objectStore('geral');
             await store.put(dec);
 
-            tx.oncomplete = () => { closeEditModal(); syncUI(); };
+            tx.oncomplete = () => { closeEditModal(); syncUI(); showToast('✅ Edição salva!'); };
         }
 
-        // Cesta e Exportação
         function toggleBasket(id) { 
             basket = basket.includes(id) ? basket.filter(i => i !== id) : [...basket, id]; 
             document.getElementById('reportBtn').classList.toggle('hidden', basket.length === 0); 
@@ -794,7 +849,6 @@
             document.body.appendChild(link); link.click(); link.remove();
         }
 
-        // DB Operations
         async function getAll(store) { return new Promise(r => { if(!db) return r([]); const t = db.transaction(store, 'readonly').objectStore(store).getAll(); t.onsuccess = () => r(t.result || []); }); }
         async function saveAll(store, data) { return new Promise(r => { const t = db.transaction(store, 'readwrite'); const s = t.objectStore(store); data.forEach(i => s.put(i)); t.oncomplete = () => r(); }); }
         
@@ -850,8 +904,8 @@
             }); 
         }
 
-        function clearSystem() { if(confirm("Zerar base?")) { indexedDB.deleteDatabase(dbName); location.reload(); } }
-        async function deleteIndividual(id) { if(confirm("Apagar decisão?")) { const trans = db.transaction('geral', 'readwrite'); trans.objectStore('geral').delete(id); trans.oncomplete = () => syncUI(); } }
+        function clearSystem() { if(confirm("Zerar base?")) { indexedDB.deleteDatabase(dbName); localStorage.clear(); location.reload(); } }
+        async function deleteIndividual(id) { if(confirm("Apagar decisão?")) { const trans = db.transaction('geral', 'readwrite'); trans.objectStore('geral').delete(id); trans.oncomplete = () => { syncUI(); showToast('🗑️ Decisão apagada!'); }; } }
         
         async function undoLastBatch() { 
             const all = await getAll('geral'); 
@@ -863,7 +917,7 @@
                 const store = tx.objectStore('geral'); 
                 await store.clear(); 
                 all.forEach(d => { if(d.batchId !== last) store.put(d); }); 
-                tx.oncomplete = () => syncUI(); 
+                tx.oncomplete = () => { syncUI(); showToast('↩️ Lote desfeito!'); }; 
             } 
         }
     </script>
