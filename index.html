@@ -70,15 +70,16 @@
 
             <details class="mb-4 bg-purple-50 dark:bg-purple-900/20 rounded-2xl border border-purple-200 dark:border-purple-800 group transition-all">
                 <summary class="p-4 text-[10px] font-black text-purple-700 dark:text-purple-400 uppercase tracking-widest cursor-pointer list-none flex justify-between items-center hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-2xl">
-                    <span class="flex items-center gap-2">🤖 Configurar IA (Groq)</span>
+                    <span class="flex items-center gap-2">🤖 Configurar IA Gemini</span>
                     <span class="text-purple-400 group-open:rotate-180 transition-transform">▼</span>
                 </summary>
                 <div class="p-4 pt-0 space-y-3">
-                    <p class="text-[9px] text-purple-600 dark:text-purple-400 font-bold leading-tight">Cole sua chave da API da Groq (começa com gsk_).</p>
+                    <p class="text-[9px] text-purple-600 dark:text-purple-400 font-bold leading-tight">Cole sua chave da API do Google Gemini.</p>
                     <div class="flex gap-2">
-                        <input type="password" id="groqApiKey" placeholder="Sua API Key Groq..." class="flex-1 w-full p-2.5 text-[10px] font-mono rounded-lg border border-purple-200 dark:border-purple-700 dark:bg-slate-800 dark:text-white outline-none focus:border-purple-500">
+                        <input type="password" id="geminiApiKey" placeholder="Sua API Key Gemini..." class="flex-1 w-full p-2.5 text-[10px] font-mono rounded-lg border border-purple-200 dark:border-purple-700 dark:bg-slate-800 dark:text-white outline-none focus:border-purple-500">
                         <button onclick="saveApiKey()" class="bg-purple-600 hover:bg-purple-700 text-white px-3 rounded-lg text-[10px] font-bold shadow-sm transition">Salvar</button>
                     </div>
+                    <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-[9px] text-blue-500 hover:underline block mt-1">Obter chave gratuita ↗</a>
                 </div>
             </details>
 
@@ -152,7 +153,7 @@
         <div class="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-purple-600 text-white">
             <div>
                 <h2 class="text-xl font-black flex items-center gap-2">✨ Juris AI</h2>
-                <p class="text-xs text-purple-200 font-medium mt-1">Assistente de Controle Externo (Groq)</p>
+                <p class="text-xs text-purple-200 font-medium mt-1">Assistente de Controle Externo</p>
             </div>
             <button onclick="closeAiDrawer()" class="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition font-bold text-sm">✕</button>
         </div>
@@ -220,11 +221,11 @@
             document.documentElement.classList.add('dark');
         }
 
-        let groqKey = localStorage.getItem('groq_api_key_v1') || '';
-        document.getElementById('groqApiKey').value = groqKey;
+        let geminiKey = localStorage.getItem('gemini_api_key_v1') || '';
+        document.getElementById('geminiApiKey').value = geminiKey;
         function saveApiKey() {
-            groqKey = document.getElementById('groqApiKey').value.trim();
-            localStorage.setItem('groq_api_key_v1', groqKey);
+            geminiKey = document.getElementById('geminiApiKey').value.trim();
+            localStorage.setItem('gemini_api_key_v1', geminiKey);
             showToast('✅ Chave da IA salva!');
         }
 
@@ -465,9 +466,9 @@
             }).join('') || `<div class="text-center py-20"><p class="text-slate-400 uppercase font-black tracking-widest text-sm">Nenhuma decisão encontrada</p></div>`;
         }
 
-        // ================= IA LOGIC (AGORA USANDO GROQ) =================
+        // ================= IA LOGIC (AGORA USANDO GEMINI NOVAMENTE) =================
         function openAiDrawer() {
-            if (!groqKey) return alert("Configure a chave da IA (Groq) na barra lateral.");
+            if (!geminiKey) return alert("Configure a chave da IA Gemini na barra lateral.");
             if (lastFilteredData.length === 0) return alert("Nenhuma decisão para analisar.");
             
             document.getElementById('aiDrawerOverlay').classList.remove('hidden');
@@ -483,30 +484,24 @@
             }, 300);
         }
 
-        async function callGroqAPI(promptText) {
-            const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        async function callGeminiAPI(promptText) {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${groqKey}`
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
-                    model: 'llama-3.3-70b-versatile',
-                    messages: [
-                        { role: 'system', content: 'Você é um assistente de auditor de controle externo. Responda em português.' },
-                        { role: 'user', content: promptText }
-                    ]
+                    contents: [{ parts: [{ text: promptText }] }],
+                    systemInstruction: { parts: [{text: "Você é um assistente de auditor de controle externo. Responda em português."}]}
                 })
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error?.message || response.statusText);
-            return data.choices[0].message.content;
+            return data.candidates[0].content.parts[0].text;
         }
 
         function appendToChat(text, isUser = false) {
             const chatArea = document.getElementById('aiChatArea');
             const colorClass = isUser ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 ml-8' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 mr-8';
-            const title = isUser ? 'Você' : 'Juris AI (Groq)';
+            const title = isUser ? 'Você' : 'Juris AI';
             const formattedText = text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
 
             chatArea.insertAdjacentHTML('beforeend', `
@@ -533,7 +528,7 @@
             const prompt = `Baseado nas decisões abaixo fornecidas pelo banco de dados, responda: "${userText}".\n\nDECISÕES:\n${contextDecisions}`;
 
             try {
-                const answer = await callGroqAPI(prompt);
+                const answer = await callGeminiAPI(prompt);
                 appendToChat(answer, false);
             } catch (e) {
                 appendToChat(`❌ Erro: <b>${e.message}</b>`, false);
@@ -565,6 +560,7 @@
                     <div class="flex items-center gap-2">
                         <span class="text-xs font-bold text-slate-400">${count}</span>
                         <button onclick="event.stopPropagation(); selectOnly('tribunal', '${n}')" class="opacity-0 group-hover:opacity-100 text-[9px] font-black bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-1 rounded uppercase hover:bg-blue-600 hover:text-white transition">Apenas</button>
+                        <button onclick="event.stopPropagation(); deleteByTribunal('${n}')" class="opacity-0 group-hover:opacity-100 text-[10px] bg-rose-50 dark:bg-rose-900/30 text-rose-500 px-1.5 py-0.5 rounded hover:bg-rose-500 hover:text-white transition" title="Apagar órgão inteiro">🗑️</button>
                     </div>
                 </div>`;
             }).join('') || '<p class="text-xs text-slate-400 italic">Nenhum órgão reflete a busca.</p>';
@@ -719,6 +715,24 @@
         function clearSystem() { if(confirm("Certeza que deseja zerar toda a base?")) { indexedDB.deleteDatabase(dbName); localStorage.removeItem('juris_links_v1'); location.reload(); } }
         async function deleteIndividual(id) { if(confirm("Apagar esta decisão?")) { const trans = db.transaction('geral', 'readwrite'); trans.objectStore('geral').delete(id); trans.oncomplete = () => syncUI(); } }
         
+        async function deleteByTribunal(tribunal) {
+            if(confirm(`ATENÇÃO: Você deseja apagar TODAS as decisões do órgão ${tribunal}?\n\nEsta ação não pode ser desfeita.`)) {
+                const all = await getAll('geral');
+                const toKeep = all.filter(d => d.tribunal !== tribunal);
+                
+                const tx = db.transaction('geral', 'readwrite');
+                const store = tx.objectStore('geral');
+                await store.clear();
+                toKeep.forEach(d => store.put(d));
+                
+                tx.oncomplete = () => {
+                    selectedTribunais = selectedTribunais.filter(t => t !== tribunal);
+                    syncUI();
+                    showToast(`🗑️ Todas as decisões do ${tribunal} foram apagadas!`);
+                };
+            }
+        }
+
         async function undoLastBatch() { 
             const all = await getAll('geral'); 
             const batches = [...new Set(all.map(d => d.batchId).filter(b => b && !b.includes('Backup') && b !== 'Legado'))].sort().reverse(); 
