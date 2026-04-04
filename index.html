@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jurisprudência TC's - v91 AI & Dark Mode</title>
+    <title>Jurisprudência TC's - v91 AI RAG</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = { darkMode: 'class' }
@@ -131,7 +131,7 @@
                             <span class="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 group-hover:text-slate-600 transition">Pesquisa por Termo Exato</span>
                         </label>
                         <button onclick="openAiDrawer()" class="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 px-3 py-1 rounded-md hover:bg-purple-100 transition flex items-center gap-1">
-                            ✨ Consultar IA na Busca Atual
+                            ✨ Consultar IA na Base Inteira
                         </button>
                     </div>
                     <span id="resultsCount" class="text-[10px] font-black text-slate-400 uppercase tracking-widest"></span>
@@ -153,22 +153,22 @@
         <div class="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-purple-600 text-white">
             <div>
                 <h2 class="text-xl font-black flex items-center gap-2">✨ Juris AI</h2>
-                <p class="text-xs text-purple-200 font-medium mt-1">Assistente de Controle Externo</p>
+                <p class="text-xs text-purple-200 font-medium mt-1">Busca Semântica Avançada</p>
             </div>
             <button onclick="closeAiDrawer()" class="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition font-bold text-sm">✕</button>
         </div>
         
         <div class="p-6 flex-1 overflow-y-auto custom-scroll flex flex-col gap-6" id="aiChatArea">
             <div class="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-xl border border-purple-100 dark:border-purple-800 text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
-                Olá. Filtre processos na tela principal e me faça perguntas sobre eles.
+                Olá. Faça sua pergunta livremente. Eu vou extrair as palavras-chave, varrer todo o seu banco de dados e formular uma resposta baseada nas 50 decisões mais relevantes que eu encontrar.
             </div>
         </div>
 
         <div class="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800">
-            <textarea id="aiInput" class="w-full p-4 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 outline-none focus:border-purple-500 text-sm dark:text-white custom-scroll resize-none" rows="3" placeholder="Ex: Qual o entendimento dos TCs sobre sobrepreço em obras rodoviárias neste ano?"></textarea>
+            <textarea id="aiInput" class="w-full p-4 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 outline-none focus:border-purple-500 text-sm dark:text-white custom-scroll resize-none" rows="3" placeholder="Ex: Qual o entendimento dos TCs sobre sobrepreço em obras rodoviárias?"></textarea>
             <div class="flex justify-end mt-3">
                 <button onclick="askAI()" class="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs uppercase tracking-widest rounded-lg shadow-md transition flex items-center gap-2">
-                    <span id="aiBtnText">Enviar à IA</span>
+                    <span id="aiBtnText">Pesquisar no Banco</span>
                 </button>
             </div>
         </div>
@@ -466,10 +466,10 @@
             }).join('') || `<div class="text-center py-20"><p class="text-slate-400 uppercase font-black tracking-widest text-sm">Nenhuma decisão encontrada</p></div>`;
         }
 
-        // ================= IA LOGIC (AGORA USANDO GEMINI NOVAMENTE) =================
+        // ================= IA RAG LOGIC (BUSCA SEMÂNTICA 2 ETAPAS COM GEMINI) =================
         function openAiDrawer() {
             if (!geminiKey) return alert("Configure a chave da IA Gemini na barra lateral.");
-            if (lastFilteredData.length === 0) return alert("Nenhuma decisão para analisar.");
+            if (fullData.length === 0) return alert("Seu banco de dados está vazio.");
             
             document.getElementById('aiDrawerOverlay').classList.remove('hidden');
             setTimeout(() => {
@@ -490,7 +490,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     contents: [{ parts: [{ text: promptText }] }],
-                    systemInstruction: { parts: [{text: "Você é um assistente de auditor de controle externo. Responda em português."}]}
+                    systemInstruction: { parts: [{text: "Você é um assistente de auditor de controle externo. Responda de forma direta."}]}
                 })
             });
             const data = await response.json();
@@ -513,7 +513,7 @@
             chatArea.scrollTop = chatArea.scrollHeight;
         }
 
-        aasync function askAI() {
+        async function askAI() {
             const inputEl = document.getElementById('aiInput');
             const userText = inputEl.value.trim();
             if (!userText) return;
@@ -524,26 +524,20 @@
             const btnText = document.getElementById('aiBtnText');
 
             try {
-                // ETAPA 1: IA extrai as palavras-chave da pergunta
+                // ETAPA 1: IA extrai as palavras-chave
                 btnText.innerHTML = '🔍 Extraindo termos...';
                 const promptKeywords = `Aja como um especialista em indexação jurídica. Baseado na pergunta do usuário, extraia no máximo 5 palavras-chave ou termos curtos essenciais para buscar em um banco de jurisprudência. Retorne APENAS as palavras separadas por espaço, sem explicações, sem numeração. Pergunta: "${userText}"`;
                 
                 const keywordsResponse = await callGeminiAPI(promptKeywords);
-                
-                // Limpa a resposta da IA para garantir que sejam só palavras úteis
                 const keywordsRaw = keywordsResponse.replace(/[^\w\sÀ-ÿ]/g, '').trim();
                 const terms = keywordsRaw.split(/\s+/).filter(t => t.length > 2);
 
-                // Fallback: se a IA falhar em dar palavras, usa a própria pergunta do usuário
-                if (terms.length === 0) {
-                    terms.push(...userText.split(/\s+/).filter(t => t.length > 3));
-                }
+                if (terms.length === 0) terms.push(...userText.split(/\s+/).filter(t => t.length > 3));
 
-                appendToChat(`*Buscando em toda a base (${fullData.length} decisões) pelos termos: ${terms.join(', ')}...*`, false);
+                appendToChat(`*Buscando na base total (${fullData.length} decisões) pelos termos: ${terms.join(', ')}...*`, false);
 
-                // ETAPA 2: O sistema varre o banco TODO silenciosamente (fullData)
+                // ETAPA 2: Varre o banco todo em busca das Top 50
                 btnText.innerHTML = '⚡ Varrendo banco...';
-                
                 let scoredData = fullData.map(d => {
                     let score = 0;
                     const searchBody = normalizar(`${d.tribunal} ${d.processo} ${d.ementa}`);
@@ -555,24 +549,18 @@
                     return { item: d, score: score };
                 });
 
-                // Separa as 50 decisões com maior pontuação para aqueles termos
-                let top50 = scoredData
-                    .filter(d => d.score > 0)
-                    .sort((a, b) => b.score - a.score)
-                    .slice(0, 50)
-                    .map(d => d.item);
+                let top50 = scoredData.filter(d => d.score > 0).sort((a, b) => b.score - a.score).slice(0, 50).map(d => d.item);
 
                 if (top50.length === 0) {
-                    appendToChat(`Não encontrei nenhuma decisão no banco inteiro correspondente a esses termos para basear a resposta.`, false);
-                    btnText.innerText = 'Enviar à IA';
+                    appendToChat(`Não encontrei nenhuma decisão no banco inteiro correspondente a esses termos para basear a resposta. Tente palavras diferentes.`, false);
+                    btnText.innerText = 'Pesquisar no Banco';
                     return;
                 }
 
                 // ETAPA 3: IA analisa as Top 50 e dá a resposta final
                 btnText.innerHTML = '🧠 Gerando síntese...';
                 const contextDecisions = top50.map(d => `[${d.tribunal} - ${d.ano}] Processo: ${d.processo}\nEmenta: ${d.ementa}`).join('\n\n');
-                
-                const finalPrompt = `Você é um assistente de auditor de controle externo. Baseado ESTRITAMENTE nas ${top50.length} decisões abaixo (extraídas do banco como as mais relevantes), responda de forma clara à pergunta do usuário.\n\nPergunta: "${userText}"\n\nDECISÕES PARA ANÁLISE:\n${contextDecisions}`;
+                const finalPrompt = `Você é um assistente de auditor de controle externo. Baseado ESTRITAMENTE nas decisões abaixo (extraídas do banco como as mais relevantes), responda de forma clara à pergunta do usuário.\n\nPergunta: "${userText}"\n\nDECISÕES PARA ANÁLISE:\n${contextDecisions}`;
 
                 const answer = await callGeminiAPI(finalPrompt);
                 appendToChat(answer, false);
@@ -580,7 +568,7 @@
             } catch (e) {
                 appendToChat(`❌ Erro: <b>${e.message}</b>`, false);
             } finally {
-                btnText.innerText = 'Enviar à IA';
+                btnText.innerText = 'Pesquisar no Banco';
             }
         }
         // =================================================
