@@ -70,13 +70,13 @@
 
             <details class="mb-4 bg-purple-50 dark:bg-purple-900/20 rounded-2xl border border-purple-200 dark:border-purple-800 group transition-all">
                 <summary class="p-4 text-[10px] font-black text-purple-700 dark:text-purple-400 uppercase tracking-widest cursor-pointer list-none flex justify-between items-center hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-2xl">
-                    <span class="flex items-center gap-2">🤖 Configurar IA Gemini</span>
+                    <span class="flex items-center gap-2">🤖 Configurar IA (Groq)</span>
                     <span class="text-purple-400 group-open:rotate-180 transition-transform">▼</span>
                 </summary>
                 <div class="p-4 pt-0 space-y-3">
-                    <p class="text-[9px] text-purple-600 dark:text-purple-400 font-bold leading-tight">Cole sua chave da API do Google Gemini.</p>
+                    <p class="text-[9px] text-purple-600 dark:text-purple-400 font-bold leading-tight">Cole sua chave da API da Groq (começa com gsk_).</p>
                     <div class="flex gap-2">
-                        <input type="password" id="geminiApiKey" placeholder="Sua API Key..." class="flex-1 w-full p-2.5 text-[10px] font-mono rounded-lg border border-purple-200 dark:border-purple-700 dark:bg-slate-800 dark:text-white outline-none focus:border-purple-500">
+                        <input type="password" id="groqApiKey" placeholder="Sua API Key Groq..." class="flex-1 w-full p-2.5 text-[10px] font-mono rounded-lg border border-purple-200 dark:border-purple-700 dark:bg-slate-800 dark:text-white outline-none focus:border-purple-500">
                         <button onclick="saveApiKey()" class="bg-purple-600 hover:bg-purple-700 text-white px-3 rounded-lg text-[10px] font-bold shadow-sm transition">Salvar</button>
                     </div>
                 </div>
@@ -152,7 +152,7 @@
         <div class="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-purple-600 text-white">
             <div>
                 <h2 class="text-xl font-black flex items-center gap-2">✨ Juris AI</h2>
-                <p class="text-xs text-purple-200 font-medium mt-1">Assistente de Controle Externo</p>
+                <p class="text-xs text-purple-200 font-medium mt-1">Assistente de Controle Externo (Groq)</p>
             </div>
             <button onclick="closeAiDrawer()" class="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition font-bold text-sm">✕</button>
         </div>
@@ -220,11 +220,11 @@
             document.documentElement.classList.add('dark');
         }
 
-        let geminiKey = localStorage.getItem('gemini_api_key_v1') || '';
-        document.getElementById('geminiApiKey').value = geminiKey;
+        let groqKey = localStorage.getItem('groq_api_key_v1') || '';
+        document.getElementById('groqApiKey').value = groqKey;
         function saveApiKey() {
-            geminiKey = document.getElementById('geminiApiKey').value.trim();
-            localStorage.setItem('gemini_api_key_v1', geminiKey);
+            groqKey = document.getElementById('groqApiKey').value.trim();
+            localStorage.setItem('groq_api_key_v1', groqKey);
             showToast('✅ Chave da IA salva!');
         }
 
@@ -465,9 +465,9 @@
             }).join('') || `<div class="text-center py-20"><p class="text-slate-400 uppercase font-black tracking-widest text-sm">Nenhuma decisão encontrada</p></div>`;
         }
 
-        // ================= IA GEMINI LOGIC =================
+        // ================= IA LOGIC (AGORA USANDO GROQ) =================
         function openAiDrawer() {
-            if (!geminiKey) return alert("Configure a chave da IA Gemini na barra lateral.");
+            if (!groqKey) return alert("Configure a chave da IA (Groq) na barra lateral.");
             if (lastFilteredData.length === 0) return alert("Nenhuma decisão para analisar.");
             
             document.getElementById('aiDrawerOverlay').classList.remove('hidden');
@@ -483,24 +483,30 @@
             }, 300);
         }
 
-        async function callGeminiAPI(promptText) {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+        async function callGroqAPI(promptText) {
+            const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${groqKey}`
+                },
                 body: JSON.stringify({ 
-                    contents: [{ parts: [{ text: promptText }] }],
-                    systemInstruction: { parts: [{text: "Você é um assistente de auditor de controle externo. Responda em português."}]}
+                    model: 'llama3-70b-8192',
+                    messages: [
+                        { role: 'system', content: 'Você é um assistente de auditor de controle externo. Responda em português.' },
+                        { role: 'user', content: promptText }
+                    ]
                 })
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error?.message || response.statusText);
-            return data.candidates[0].content.parts[0].text;
+            return data.choices[0].message.content;
         }
 
         function appendToChat(text, isUser = false) {
             const chatArea = document.getElementById('aiChatArea');
             const colorClass = isUser ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 ml-8' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 mr-8';
-            const title = isUser ? 'Você' : 'Juris AI';
+            const title = isUser ? 'Você' : 'Juris AI (Groq)';
             const formattedText = text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
 
             chatArea.insertAdjacentHTML('beforeend', `
@@ -527,7 +533,7 @@
             const prompt = `Baseado nas decisões abaixo fornecidas pelo banco de dados, responda: "${userText}".\n\nDECISÕES:\n${contextDecisions}`;
 
             try {
-                const answer = await callGeminiAPI(prompt);
+                const answer = await callGroqAPI(prompt);
                 appendToChat(answer, false);
             } catch (e) {
                 appendToChat(`❌ Erro: <b>${e.message}</b>`, false);
