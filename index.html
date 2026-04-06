@@ -187,6 +187,28 @@
         </div>
     </div>
 
+    <div id="editModal" class="fixed inset-0 z-[5000] hidden flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-[2rem] p-10 shadow-2xl border border-slate-700 flex flex-col gap-4">
+            <div class="flex justify-between items-center mb-2">
+                <h3 class="text-xl font-black text-slate-800 dark:text-white">Editar Decisão</h3>
+                <button onclick="closeEditModal()" class="text-slate-400 hover:text-rose-500 font-bold text-xs uppercase transition">✕ Sair</button>
+            </div>
+            <input type="hidden" id="editId">
+            <div class="flex gap-4">
+                <div class="flex-1"><label class="text-[10px] font-bold text-slate-500 uppercase">Órgão</label><input type="text" id="editTribunal" class="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 dark:text-white outline-none"></div>
+                <div class="flex-1"><label class="text-[10px] font-bold text-slate-500 uppercase">Processo</label><input type="text" id="editProcesso" class="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 dark:text-white outline-none"></div>
+                <div class="flex-1"><label class="text-[10px] font-bold text-slate-500 uppercase">Ano</label><input type="text" id="editAno" class="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 dark:text-white outline-none"></div>
+            </div>
+            <div>
+                <label class="text-[10px] font-bold text-slate-500 uppercase">Ementa / Texto</label>
+                <textarea id="editEmenta" rows="6" class="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 dark:text-white outline-none custom-scroll"></textarea>
+            </div>
+            <div class="flex justify-end gap-3 mt-4">
+                <button onclick="saveEdit()" class="px-8 py-4 bg-blue-600 text-white rounded-xl font-bold text-[10px] uppercase shadow-lg tracking-widest hover:bg-blue-700 transition">Salvar Alterações</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const CONFIG_TRIBUNAIS = {
             'TCU': 'https://pesquisa.apps.tcu.gov.br/',
@@ -250,22 +272,26 @@
         
         function renderLinkManager() {
             const allTribs = [...new Set(fullData.map(d => d.tribunal))].sort();
-            const html = allTribs.map(t => `
+            const html = allTribs.map(t => {
+                const savedLink = tribunalLinks.hasOwnProperty(t) ? tribunalLinks[t] : (CONFIG_TRIBUNAIS[t] || '');
+                return `
                 <div class="flex flex-col gap-1">
                     <label class="text-[9px] font-black text-blue-600 uppercase">${t}</label>
-                    <input type="text" value="${tribunalLinks[t] || CONFIG_TRIBUNAIS[t] || ''}" onchange="updateLink('${t}', this.value)" placeholder="Cole o link aqui..." class="w-full p-2 text-[10px] font-mono rounded-lg border border-slate-200 dark:border-slate-700 outline-none focus:border-blue-400 bg-white dark:bg-slate-800 dark:text-white">
+                    <input type="text" value="${savedLink}" onchange="updateLink('${t}', this.value)" placeholder="Cole o link aqui..." class="w-full p-2 text-[10px] font-mono rounded-lg border border-slate-200 dark:border-slate-700 outline-none focus:border-blue-400 bg-white dark:bg-slate-800 dark:text-white">
                 </div>
-            `).join('');
+                `;
+            }).join('');
             document.getElementById('linkManagerList').innerHTML = html || '<p class="text-xs text-slate-400">Nenhum órgão na base.</p>';
         }
 
         function updateLink(tribunal, url) {
             tribunalLinks[tribunal] = url.trim();
             localStorage.setItem('juris_links_v1', JSON.stringify(tribunalLinks));
+            showToast('✅ Link atualizado!');
         }
 
         function openExternalLink(tribunal, processo) {
-            const baseUrl = tribunalLinks[tribunal] || CONFIG_TRIBUNAIS[tribunal];
+            const baseUrl = tribunalLinks.hasOwnProperty(tribunal) ? tribunalLinks[tribunal] : CONFIG_TRIBUNAIS[tribunal];
             if (baseUrl) {
                 window.open(baseUrl, '_blank');
             } else {
@@ -452,6 +478,7 @@
                     <div class="absolute top-6 right-6 flex gap-2">
                         <button onclick="openExternalLink('${dec.tribunal}', '${dec.processo}')" class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-400 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50 transition shadow-sm" title="Consultar Inteiro Teor">🔗 Externo</button>
                         ${basketBtn}
+                        <button onclick="openEditModal('${dec.id}')" class="p-2.5 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-xl border border-transparent text-slate-300 hover:text-amber-500 transition" title="Editar Decisão">✏️</button>
                         <button onclick="deleteIndividual('${dec.id}')" class="p-2.5 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-xl border border-transparent text-slate-300 hover:text-rose-500 transition" title="Apagar da Base">🗑️</button>
                     </div>
                     
@@ -704,6 +731,42 @@
         function openImportModal() { document.getElementById('importModal').classList.remove('hidden'); }
         function closeImportModal() { document.getElementById('importModal').classList.add('hidden'); }
         
+        // Funções para o Modal de Edição
+        function openEditModal(id) {
+            const dec = fullData.find(d => d.id === id);
+            if (!dec) return;
+            document.getElementById('editId').value = dec.id;
+            document.getElementById('editTribunal').value = dec.tribunal;
+            document.getElementById('editProcesso').value = dec.processo;
+            document.getElementById('editAno').value = dec.ano;
+            document.getElementById('editEmenta').value = dec.ementa;
+            document.getElementById('editModal').classList.remove('hidden');
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.add('hidden');
+        }
+
+        async function saveEdit() {
+            const id = document.getElementById('editId').value;
+            const decIndex = fullData.findIndex(d => d.id === id);
+            if (decIndex === -1) return;
+
+            const updatedDec = { ...fullData[decIndex] };
+            updatedDec.tribunal = document.getElementById('editTribunal').value.trim();
+            updatedDec.processo = document.getElementById('editProcesso').value.trim();
+            updatedDec.ano = document.getElementById('editAno').value.trim();
+            updatedDec.ementa = document.getElementById('editEmenta').value.trim();
+
+            const tx = db.transaction('geral', 'readwrite');
+            tx.objectStore('geral').put(updatedDec);
+            tx.oncomplete = () => {
+                closeEditModal();
+                showToast('✅ Decisão atualizada com sucesso!');
+                syncUI();
+            };
+        }
+
         async function processImport() { 
             const paste = document.getElementById('jsonPasteArea').value; 
             if (paste) { 
