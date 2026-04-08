@@ -995,42 +995,35 @@ ${contextDecisions}`;
             executeSearch(); // Manda pesquisar
             showToast('👁️ Mostrando as decisões analisadas pela IA!');
         }
-       function buscarDuplicidades() {
-            // Limpa acentos, espaços e pontuações para sobrar só letra e número puro
+      function buscarDuplicidades() {
+            // Limpa tudo: acentos, quebras de linha e pontuação. Deixa apenas um bloco puro de letras e números para não falhar por causa de um espaço a mais.
             const norm = (s) => (s || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, '');
             
             let duplicadas = new Set();
-            let mapProcessos = {};
             let mapEmentas = {};
 
             fullData.forEach(d => {
-                let procRaw = norm(d.processo);
+                // Compara ESTRITAMENTE o texto completo da ementa (texto do card)
+                let textoCompleto = norm(d.ementa);
                 
-                // REGRA 1: Só agrupa por processo se tiver NÚMEROS e for maior que 4 caracteres (foge dos "S/N", "N/A", "0")
-                if (procRaw.length > 4 && /\d/.test(procRaw)) {
-                    let procKey = norm(d.tribunal) + '_' + procRaw;
-                    if (!mapProcessos[procKey]) mapProcessos[procKey] = [];
-                    mapProcessos[procKey].push(d);
-                }
-                
-                // REGRA 2: Só agrupa por ementa se o texto INTEIRO for idêntico (ignorando pontuação e espaços)
-                let ementaKey = norm(d.ementa);
-                if (ementaKey.length > 100) { // Ignora ementas vazias ou minúsculas
-                    if (!mapEmentas[ementaKey]) mapEmentas[ementaKey] = [];
-                    mapEmentas[ementaKey].push(d);
+                // Exige que tenha pelo menos um texto razoável para evitar cruzar cards vazios
+                if (textoCompleto.length > 50) { 
+                    if (!mapEmentas[textoCompleto]) {
+                        mapEmentas[textoCompleto] = [];
+                    }
+                    mapEmentas[textoCompleto].push(d);
                 }
             });
 
-            // Coleta quem tem cópia
-            Object.values(mapProcessos).forEach(arr => {
-                if (arr.length > 1) arr.forEach(d => duplicadas.add(d.id));
-            });
+            // Só pega os grupos que têm 2 ou mais decisões com o texto EXATAMENTE igual
             Object.values(mapEmentas).forEach(arr => {
-                if (arr.length > 1) arr.forEach(d => duplicadas.add(d.id));
+                if (arr.length > 1) {
+                    arr.forEach(d => duplicadas.add(d.id));
+                }
             });
 
             if (duplicadas.size === 0) {
-                return alert("Excelente! Nenhuma decisão duplicada encontrada no seu banco.");
+                return alert("Excelente! Nenhuma decisão com texto idêntico encontrada no seu banco.");
             }
 
             // Joga o resultado na tela
@@ -1040,10 +1033,12 @@ ${contextDecisions}`;
             document.getElementById('exactMatch').checked = false;
             selectedTribunais = [];
             selectedYears = [];
-            document.getElementById('sortOrder').value = 'az'; // Ordena por Órgão para os pares ficarem juntos
+            
+            // Ordena de A-Z para tentar deixar as duplicadas uma perto da outra
+            document.getElementById('sortOrder').value = 'az'; 
             
             executeSearch();
-            showToast(`👯 ${duplicadas.size} possíveis duplicidades encontradas!`);
+            showToast(`👯 ${duplicadas.size} decisões com textos idênticos encontradas!`);
         }
     </script>
 </body>
