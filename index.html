@@ -62,7 +62,7 @@
             <button onclick="openImportModal()" class="w-full mb-6 bg-blue-600 text-white p-4 rounded-xl font-bold shadow-lg shadow-blue-200 dark:shadow-none hover:bg-blue-700 transition uppercase text-[11px] tracking-widest">📥 Importar JSON</button>
             
             <button id="reportBtn" onclick="generateBasketReport()" class="hidden w-full mb-6 bg-emerald-600 text-white p-4 rounded-xl font-black shadow-lg shadow-emerald-200 dark:shadow-none uppercase text-[11px] tracking-widest hover:bg-emerald-700 transition">📋 Cesta de Decisões (<span id="basketQty">0</span>)</button>
-
+            <button onclick="buscarDuplicidades()" class="w-full mb-6 bg-amber-500 text-white p-4 rounded-xl font-black shadow-lg shadow-amber-200 dark:shadow-none uppercase text-[11px] tracking-widest hover:bg-amber-600 transition">👯 Buscar Duplicadas</button>
             <div class="mb-6 bg-slate-800 dark:bg-slate-900 rounded-3xl p-6 text-center shadow-xl border-b-4 border-blue-500">
                 <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Decisões Cadastradas</p>
                 <p id="grandTotal" class="text-4xl font-black text-white tracking-tighter">0</p>
@@ -620,49 +620,48 @@
 
             const btnText = document.getElementById('aiBtnText');
 
-            try {
+          try {
                 btnText.innerHTML = '🔍 Mapeando contexto...';
                 
-                // Prompt blindado: força a IA a gerar jargões técnicos e proíbe conversa fiada
-                const promptKeywords = `Atue como um indexador de banco de dados jurídico. 
-O usuário pesquisou: "${userText}". 
-Sua tarefa: Forneça APENAS termos técnicos, jargões e sinônimos jurídicos relevantes para cruzar com essa busca em ementas de Tribunais de Contas. 
-Exemplo: se a busca for "reajuste 12 meses", retorne "reajuste, repactuação, reequilíbrio econômico-financeiro, periodicidade anual, inflação, índice".
-Regra Absoluta: Retorne apenas as expressões separadas por vírgula. NÃO escreva frases, não escreva "Aqui estão".`;
+                // 1. Prompt blindado: força a IA a buscar NÚMEROS e proíbe expressões compostas
+                const promptKeywords = `Atue como um indexador jurídico. O usuário pesquisou: "${userText}". 
+Sua tarefa: Extraia jargões, sinônimos e PRINCIPALMENTE NÚMEROS e prazos citados (ex: 12, 24).
+REGRA ABSOLUTA: Retorne APENAS PALAVRAS SOLTAS separadas por espaço. NUNCA retorne expressões compostas (ex: ao invés de "reajuste contratual", retorne "reajuste contrato repactuação periodicidade anual 12 24 meses").`;
 
                 let keywordsResponse = await callCohereAPI(promptKeywords);
-                
-                // Limpeza de segurança (caso a IA seja teimosa e mande texto inútil)
                 keywordsResponse = keywordsResponse.replace(/aqui|estão|palavras|chave|termos|abaixo/gi, '');
                 
-                // Filtro de Lixo (Stopwords): Impede que palavras genéricas sujem a pontuação da busca
-                const ignorar = ['qual', 'entendimento', 'sobre', 'que', 'ser', 'ter', 'poder', 'para', 'dos', 'das', 'com', 'como', 'estabelecido', 'ou', 'em', 'um', 'uma', 'na', 'no'];
+                // Filtro de Lixo (Stopwords) para não poluir a busca
+                const ignorar = ['qual', 'entendimento', 'sobre', 'que', 'ser', 'ter', 'poder', 'para', 'dos', 'das', 'com', 'como', 'estabelecido', 'ou', 'em', 'um', 'uma', 'na', 'no', 'aos', 'por', 'pelo', 'pela', 'tem', 'deve', 'são', 'mais'];
                 
-                // Divide a resposta da IA pelas vírgulas, limpa pontuações estranhas e joga fora o lixo
-                let terms = keywordsResponse.split(',')
-                    .map(t => t.trim().replace(/[^\wÀ-ÿ\s-]/g, '')) 
-                    .filter(t => t.length > 2 && !ignorar.includes(t.toLowerCase()));
+                // 2. Separa os sinônimos da IA garantindo que CADA PALAVRA lute por si só
+                let aiTerms = keywordsResponse.split(/[\s,]+/)
+                    .map(t => normalizar(t.trim().replace(/[^\wÀ-ÿ0-9-]/g, ''))) 
+                    .filter(t => t.length > 1 && !ignorar.includes(t)); // length > 1 salvou o '12' e o '24'!
 
-                // Fallback (Plano B) caso a internet caia no meio da extração
-                if (terms.length === 0) {
-                    terms = userText.split(/\s+/).map(t => t.replace(/[^\wÀ-ÿ-]/g, '')).filter(t => t.length > 3 && !ignorar.includes(t.toLowerCase()));
-                }
+                // 3. Pega TUDO que você digitou e joga na busca para a IA não descartar a sua intenção
+                let userTerms = userText.split(/[\s,]+/)
+                    .map(t => normalizar(t.trim().replace(/[^\wÀ-ÿ0-9-]/g, '')))
+                    .filter(t => t.length > 1 && !ignorar.includes(t));
 
-                appendToChat(`🎯 **Estratégia de Busca Montada:**\nPara abranger todo o contexto, a IA extraiu os seguintes termos técnicos e sinônimos para varrer o banco:\n> \`${terms.join(' | ')}\`\n\n*Filtrando e analisando as 15 decisões mais relevantes encontradas...*`, false);
+                // 4. Junta seus termos com os da IA e remove as palavras repetidas
+                let terms = [...new Set([...aiTerms, ...userTerms])].filter(t => t !== "");
+
+                appendToChat(`🎯 **Estratégia de Busca Montada:**\nPara varrer o banco com força máxima, juntamos seus termos originais com os sinônimos da IA:\n> \`${terms.join(' | ')}\`\n\n*Filtrando e analisando as 15 decisões mais relevantes encontradas...*`, false);
 
                 btnText.innerHTML = '⚡ Varrendo banco...';
+                
                 let scoredData = fullData.map(d => {
                     let score = 0;
                     const searchBody = normalizar(`${d.tribunal} ${d.processo} ${d.ementa}`);
                     terms.forEach(t => {
-                        const regex = new RegExp(normalizar(t), 'gi');
+                        const regex = new RegExp(t, 'gi');
                         const matches = searchBody.match(regex);
                         if (matches) score += matches.length;
                     });
                     return { item: d, score: score };
                 });
 
-                // MUDANÇA PARA TOP 15: Mais rápido, mais barato e foca só no "filé mignon"
                 let top15 = scoredData.filter(d => d.score > 0).sort((a, b) => b.score - a.score).slice(0, 15).map(d => d.item);
 
                 if (top15.length === 0) {
@@ -995,6 +994,55 @@ ${contextDecisions}`;
             closeAiDrawer(); // Fecha a gaveta
             executeSearch(); // Manda pesquisar
             showToast('👁️ Mostrando as decisões analisadas pela IA!');
+        }
+        function buscarDuplicidades() {
+            // Função para remover acentos, espaços e pontuações para comparar o "texto puro"
+            const norm = (s) => (s || '').toLowerCase().replace(/[^\w]/g, '');
+            
+            let duplicadas = new Set();
+            let mapProcessos = {};
+            let mapEmentas = {};
+
+            fullData.forEach(d => {
+                let proc = norm(d.tribunal) + norm(d.processo);
+                let ementa = norm(d.ementa).substring(0, 100); // Pega o começo do texto para comparar
+
+                // Agrupa por Órgão + Processo
+                if (proc.length > 5) {
+                    if (!mapProcessos[proc]) mapProcessos[proc] = [];
+                    mapProcessos[proc].push(d);
+                }
+                
+                // Agrupa por Texto da Ementa
+                if (ementa.length > 50) {
+                    if (!mapEmentas[ementa]) mapEmentas[ementa] = [];
+                    mapEmentas[ementa].push(d);
+                }
+            });
+
+            // Separa os IDs de quem tem "irmãos gêmeos" no banco
+            Object.values(mapProcessos).forEach(arr => {
+                if (arr.length > 1) arr.forEach(d => duplicadas.add(d.id));
+            });
+            Object.values(mapEmentas).forEach(arr => {
+                if (arr.length > 1) arr.forEach(d => duplicadas.add(d.id));
+            });
+
+            if (duplicadas.size === 0) {
+                return alert("Excelente! Nenhuma decisão duplicada encontrada no seu banco.");
+            }
+
+            // Usa a mesma mecânica da IA para jogar só as duplicadas na tela
+            window.iaFilterIds = Array.from(duplicadas);
+            
+            document.getElementById('searchInput').value = '';
+            document.getElementById('exactMatch').checked = false;
+            selectedTribunais = [];
+            selectedYears = [];
+            document.getElementById('sortOrder').value = 'az'; // Ordena por Tribunal para juntar os pares
+            
+            executeSearch();
+            showToast(`👯 ${duplicadas.size} possíveis duplicidades encontradas!`);
         }
     </script>
 </body>
