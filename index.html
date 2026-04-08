@@ -74,7 +74,7 @@
                     <span class="text-purple-400 group-open:rotate-180 transition-transform">▼</span>
                 </summary>
                 <div class="p-4 pt-0 space-y-3">
-                    <p class="text-[9px] text-purple-600 dark:text-purple-400 font-bold leading-tight">Cole sua Trial Key da API da Cohere.</p>
+                    <p class="text-[9px] text-purple-600 dark:text-purple-400 font-bold leading-tight">Cole sua chave da API da Cohere.</p>
                     <div class="flex gap-2">
                         <input type="password" id="cohereApiKey" placeholder="Sua API Key Cohere..." class="flex-1 w-full p-2.5 text-[10px] font-mono rounded-lg border border-purple-200 dark:border-purple-700 dark:bg-slate-800 dark:text-white outline-none focus:border-purple-500">
                         <button onclick="saveApiKey()" class="bg-purple-600 hover:bg-purple-700 text-white px-3 rounded-lg text-[10px] font-bold shadow-sm transition">Salvar</button>
@@ -158,7 +158,7 @@
         <div class="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-purple-600 text-white">
             <div>
                 <h2 class="text-xl font-black flex items-center gap-2">✨ Juris AI</h2>
-                <p class="text-xs text-purple-200 font-medium mt-1">Busca Semântica Avançada</p>
+                <p class="text-xs text-purple-200 font-medium mt-1">Busca Semântica Avançada (Cohere)</p>
             </div>
             <button onclick="closeAiDrawer()" class="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition font-bold text-sm">✕</button>
         </div>
@@ -274,37 +274,32 @@
         };
         request.onsuccess = (e) => { db = e.target.result; syncUI(); };
 
-        let tribunalLinks = JSON.parse(localStorage.getItem('juris_links_v1')) || {};
+        // Remove a busca no localStorage, forçando o uso do CONFIG_TRIBUNAIS para todos os usuários
+        let tribunalLinks = CONFIG_TRIBUNAIS;
         
         function renderLinkManager() {
             const allTribs = [...new Set(fullData.map(d => d.tribunal))].sort();
             const html = allTribs.map(t => {
-                const savedLink = tribunalLinks.hasOwnProperty(t) ? tribunalLinks[t] : (CONFIG_TRIBUNAIS[t] || '');
+                const savedLink = tribunalLinks[t] || '';
                 return `
                 <div class="flex flex-col gap-1">
                     <label class="text-[9px] font-black text-blue-600 uppercase">${t}</label>
-                    <input type="text" value="${savedLink}" onchange="updateLink('${t}', this.value)" placeholder="Cole o link aqui..." class="w-full p-2 text-[10px] font-mono rounded-lg border border-slate-200 dark:border-slate-700 outline-none focus:border-blue-400 bg-white dark:bg-slate-800 dark:text-white">
+                    <input type="text" value="${savedLink}" disabled class="w-full p-2 text-[10px] font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 cursor-not-allowed">
                 </div>
                 `;
             }).join('');
             document.getElementById('linkManagerList').innerHTML = html || '<p class="text-xs text-slate-400">Nenhum órgão na base.</p>';
         }
 
-        function updateLink(tribunal, url) {
-            tribunalLinks[tribunal] = url.trim();
-            localStorage.setItem('juris_links_v1', JSON.stringify(tribunalLinks));
-            showToast('✅ Link atualizado!');
-        }
-
         function openExternalLink(tribunal, processo) {
-            const baseUrl = tribunalLinks.hasOwnProperty(tribunal) ? tribunalLinks[tribunal] : CONFIG_TRIBUNAIS[tribunal];
+            const baseUrl = tribunalLinks.hasOwnProperty(tribunal) ? tribunalLinks[tribunal] : CONFIG_TRIBUNAIS['DEFAULT'];
             if (baseUrl) {
-                window.open(baseUrl, '_blank');
-            } else {
-                if(confirm(`Link não configurado para o ${tribunal}. Pesquisar no Google?`)) {
-                    window.open(`https://www.google.com/search?q=jurisprudencia+${tribunal.replace(' ', '+')}+${processo.replace(/\//g, '%2F')}`, '_blank');
+                if (baseUrl === CONFIG_TRIBUNAIS['DEFAULT']) {
+                    window.open(`${baseUrl}${tribunal.replace(' ', '+')}+${processo.replace(/\//g, '%2F')}`, '_blank');
+                } else {
+                    window.open(baseUrl, '_blank');
                 }
-            }
+            } 
         }
 
         function extractYear(item) {
@@ -509,7 +504,7 @@
             }).join('') || `<div class="text-center py-20"><p class="text-slate-400 uppercase font-black tracking-widest text-sm">Nenhuma decisão encontrada</p></div>`;
         }
 
-       // ================= IA RAG LOGIC (COHERE) =================
+        // ================= IA RAG LOGIC (COHERE) =================
         function openAiDrawer() {
             if (!cohereKey) return alert("Configure a chave da IA Cohere na barra lateral.");
             if (fullData.length === 0) return alert("Seu banco de dados está vazio.");
@@ -535,7 +530,7 @@
                     'Authorization': `Bearer ${cohereKey}`
                 },
                 body: JSON.stringify({ 
-                    model: 'command-r-plus', // <-- Modelo atualizado e ativo
+                    model: 'command-r-plus', 
                     message: promptText,
                     preamble: "Você é um assistente de auditor de controle externo. Responda em português de forma clara e baseada estritamente nas decisões fornecidas."
                 })
@@ -572,7 +567,7 @@
 
             try {
                 btnText.innerHTML = '🔍 Extraindo termos...';
-                const promptKeywords = `Extraia no máximo 5 palavras-chave ou termos curtos essenciais da seguinte pergunta para buscar em um banco de jurisprudência. Retorne APENAS as palavras separadas por espaço, sem mais nada. Pergunta: "${userText}"`;
+                const promptKeywords = `Extraia no máximo 5 palavras-chave ou termos curtos essenciais da seguinte pergunta para buscar em um banco de jurisprudência. Retorne APENAS as palavras separadas por espaço, sem explicações. Pergunta: "${userText}"`;
                 
                 const keywordsResponse = await callCohereAPI(promptKeywords);
                 const keywordsRaw = keywordsResponse.replace(/[^\w\sÀ-ÿ]/g, '').trim();
