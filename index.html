@@ -397,10 +397,25 @@
             resetPageAndSearch();
         }
 
-        function highlight(text, query) { 
-            if (!text || !query || query.length < 3) return text; 
+      function highlight(text, query) { 
+            if (!text || !query) return text; 
             const isExact = document.getElementById('exactMatch').checked;
-            const terms = isExact ? [query.trim()] : query.trim().split(/\s+/).filter(t => t.length > 2);
+            
+            let terms = [];
+            if (isExact) {
+                terms = [query.trim()].filter(t => t.length > 2);
+            } else {
+                // Regex que separa o que está entre aspas do que está solto
+                const regex = /"([^"]+)"|(\S+)/g;
+                let match;
+                while ((match = regex.exec(query)) !== null) {
+                    let term = match[1] ? match[1].trim() : match[2].trim();
+                    if(term.length > 2) terms.push(term);
+                }
+            }
+            
+            if (terms.length === 0) return text;
+            
             let res = text;
             terms.forEach(term => {
                 const pat = normalizar(term).split('').map(c => ({'a':'[aàáâãä]','e':'[eèéêë]','i':'[iìíîï]','o':'[oòóôõö]','u':'[uùúûü]','c':'[cç]','n':'[nñ]'}[c] || c)).join(''); 
@@ -409,16 +424,31 @@
             return res;
         }
 
-        function executeSearch() {
+       function executeSearch() {
             const queryRaw = document.getElementById('searchInput').value;
             const isExact = document.getElementById('exactMatch').checked;
             const sortOrder = document.getElementById('sortOrder').value;
-            const q = normalizar(queryRaw).trim();
-            const terms = isExact ? [q] : q.split(/\s+/).filter(t => t.length > 0);
+            
+            let terms = [];
+            if (!queryRaw.trim()) {
+                terms = [];
+            } else if (isExact) {
+                terms = [normalizar(queryRaw).trim()];
+            } else {
+                // Mágica das aspas: separa os blocos exatos das palavras soltas
+                const regex = /"([^"]+)"|(\S+)/g;
+                let match;
+                while ((match = regex.exec(queryRaw)) !== null) {
+                    let term = match[1] ? match[1] : match[2];
+                    terms.push(normalizar(term).trim());
+                }
+            }
+            terms = terms.filter(t => t.length > 0);
 
             let textFiltered = fullData.filter(d => {
-                if (!q) return true;
+                if (terms.length === 0) return true;
                 let searchBody = normalizar(`${d.tribunal} ${d.processo} ${d.ementa}`);
+                // Exige que TODOS os termos (com ou sem aspas) estejam na ementa
                 return terms.every(term => searchBody.includes(term));
             });
 
