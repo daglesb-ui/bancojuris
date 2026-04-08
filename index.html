@@ -530,7 +530,7 @@
                     'Authorization': `Bearer ${cohereKey}`
                 },
                 body: JSON.stringify({ 
-                    model: 'command-r-plus', 
+                    model: 'command-r-plus-08-2024', // <-- Nome com a versão obrigatória
                     message: promptText,
                     preamble: "Você é um assistente de auditor de controle externo. Responda em português de forma clara e baseada estritamente nas decisões fornecidas."
                 })
@@ -539,7 +539,6 @@
             if (!response.ok) throw new Error(data.message || "Erro na comunicação com a Cohere");
             return data.text;
         }
-
         function appendToChat(text, isUser = false) {
             const chatArea = document.getElementById('aiChatArea');
             const colorClass = isUser ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 ml-8' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 mr-8';
