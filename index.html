@@ -393,6 +393,7 @@
         function clearFilters() {
             selectedTribunais = [];
             selectedYears = [];
+            window.iaFilterIds = null; // Libera o filtro da IA
             document.getElementById('searchInput').value = '';
             resetPageAndSearch();
         }
@@ -445,13 +446,17 @@
             }
             terms = terms.filter(t => t.length > 0);
 
-            let textFiltered = fullData.filter(d => {
+            // ---> A MUDANÇA ENTRA EXATAMENTE AQUI <---
+            // Se o filtro da IA estiver ativo (botão roxo), usa só os 15 IDs dela. Senão, usa o banco todo.
+            let baseData = window.iaFilterIds ? fullData.filter(d => window.iaFilterIds.includes(d.id)) : fullData;
+
+            let textFiltered = baseData.filter(d => {
                 if (terms.length === 0) return true;
                 let searchBody = normalizar(`${d.tribunal} ${d.processo} ${d.ementa}`);
                 // Exige que TODOS os termos (com ou sem aspas) estejam na ementa
                 return terms.every(term => searchBody.includes(term));
             });
-
+          
             let forTribunalCount = textFiltered.filter(d => selectedYears.length === 0 || selectedYears.includes(d.ano));
             let forYearCount = textFiltered.filter(d => selectedTribunais.length === 0 || selectedTribunais.includes(d.tribunal));
 
@@ -573,12 +578,26 @@
             const chatArea = document.getElementById('aiChatArea');
             const colorClass = isUser ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 ml-8' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 mr-8';
             const title = isUser ? 'Você' : 'Juris AI (Cohere)';
-            const formattedText = text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+            
+            // Transforma negrito e quebras de linha
+            let formattedText = text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+            
+            // MÁGICA 1: Caça os [Órgãos - Processos] e transforma em botões clicáveis
+            if (!isUser) {
+                formattedText = formattedText.replace(/\[(.*?)\s*-\s*(.*?)\]/g, (match, trib, proc) => {
+                    return `<button onclick="openExternalLink('${trib.trim()}', '${proc.trim()}')" class="text-[9px] bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 px-1.5 py-0.5 rounded ml-1 hover:bg-blue-600 hover:text-white transition font-bold tracking-widest inline-flex items-center gap-1 shadow-sm" title="Abrir decisão original">🔗 ${trib.trim()}</button>`;
+                });
+            }
 
             let exportBtnHtml = '';
             if (exportData) {
-                window.lastAiExport = exportData; // Salva na memória invisível para exportar depois
-                exportBtnHtml = `<div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700"><button onclick="exportarParecerIA()" class="text-[10px] bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold uppercase tracking-widest hover:bg-blue-50 hover:text-blue-600 dark:hover:text-blue-400 transition shadow-sm">📄 Exportar Parecer em TXT</button></div>`;
+                window.lastAiExport = exportData;
+                // MÁGICA 2: Adiciona o botão de Exportar TXT e o novo botão "Ver na Tela"
+                exportBtnHtml = `
+                <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700 flex gap-2 flex-wrap">
+                    <button onclick="exportarParecerIA()" class="text-[10px] bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold uppercase tracking-widest hover:bg-slate-200 transition shadow-sm">📄 Exportar TXT</button>
+                    <button onclick="filtrarTelaPorIA()" class="text-[10px] bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-400 px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold uppercase tracking-widest hover:bg-purple-100 dark:hover:bg-purple-900/50 transition shadow-sm">👁️ Ver as 15 Decisões na Tela</button>
+                </div>`;
             }
 
             chatArea.insertAdjacentHTML('beforeend', `
@@ -602,25 +621,34 @@
             const btnText = document.getElementById('aiBtnText');
 
             try {
-                let terms = [];
+                btnText.innerHTML = '🔍 Mapeando contexto...';
                 
-                // TRAVA INTELIGENTE: Se tem número (ex: ano, processo, lei), não inventa sinônimo. Busca exato.
-                if (/\d/.test(userText)) {
-                    btnText.innerHTML = '🔍 Busca exata...';
-                    terms = userText.split(/\s+/).filter(t => t.length > 2);
-                } else {
-                    // Se é só texto (ex: "fraude em asfalto"), pede pra IA expandir e achar sinônimos jurídicos
-                    btnText.innerHTML = '🔍 Expandindo contexto...';
-                    const promptKeywords = `Você é um auditor de controle externo. O usuário quer buscar jurisprudência sobre: "${userText}". Expanda essa busca gerando até 10 palavras-chave estratégicas. OBRIGATÓRIO: inclua sinônimos técnicos, jargões de licitação/contrato e conceitos correlatos ao tema (ex: se o tema é 'asfalto', inclua 'pavimentação', 'recapeamento', 'rodovia'). Retorne APENAS as palavras separadas por espaço, sem vírgulas, sem explicações.`;
-                    
-                    const keywordsResponse = await callCohereAPI(promptKeywords);
-                    const keywordsRaw = keywordsResponse.replace(/[^\w\sÀ-ÿ]/g, '').trim();
-                    terms = keywordsRaw.split(/\s+/).filter(t => t.length > 2);
+                // Prompt blindado: força a IA a gerar jargões técnicos e proíbe conversa fiada
+                const promptKeywords = `Atue como um indexador de banco de dados jurídico. 
+O usuário pesquisou: "${userText}". 
+Sua tarefa: Forneça APENAS termos técnicos, jargões e sinônimos jurídicos relevantes para cruzar com essa busca em ementas de Tribunais de Contas. 
+Exemplo: se a busca for "reajuste 12 meses", retorne "reajuste, repactuação, reequilíbrio econômico-financeiro, periodicidade anual, inflação, índice".
+Regra Absoluta: Retorne apenas as expressões separadas por vírgula. NÃO escreva frases, não escreva "Aqui estão".`;
+
+                let keywordsResponse = await callCohereAPI(promptKeywords);
+                
+                // Limpeza de segurança (caso a IA seja teimosa e mande texto inútil)
+                keywordsResponse = keywordsResponse.replace(/aqui|estão|palavras|chave|termos|abaixo/gi, '');
+                
+                // Filtro de Lixo (Stopwords): Impede que palavras genéricas sujem a pontuação da busca
+                const ignorar = ['qual', 'entendimento', 'sobre', 'que', 'ser', 'ter', 'poder', 'para', 'dos', 'das', 'com', 'como', 'estabelecido', 'ou', 'em', 'um', 'uma', 'na', 'no'];
+                
+                // Divide a resposta da IA pelas vírgulas, limpa pontuações estranhas e joga fora o lixo
+                let terms = keywordsResponse.split(',')
+                    .map(t => t.trim().replace(/[^\wÀ-ÿ\s-]/g, '')) 
+                    .filter(t => t.length > 2 && !ignorar.includes(t.toLowerCase()));
+
+                // Fallback (Plano B) caso a internet caia no meio da extração
+                if (terms.length === 0) {
+                    terms = userText.split(/\s+/).map(t => t.replace(/[^\wÀ-ÿ-]/g, '')).filter(t => t.length > 3 && !ignorar.includes(t.toLowerCase()));
                 }
 
-                if (terms.length === 0) terms.push(...userText.split(/\s+/).filter(t => t.length > 3));
-
-                appendToChat(`🎯 **Estratégia de Busca Montada:**\nPara abranger todo o contexto, a IA expandiu sua pergunta e está varrendo o banco procurando pelos seguintes sinônimos e termos técnicos:\n> \`${terms.join(' | ')}\`\n\n*Filtrando e analisando as 15 decisões mais relevantes encontradas...*`, false);
+                appendToChat(`🎯 **Estratégia de Busca Montada:**\nPara abranger todo o contexto, a IA extraiu os seguintes termos técnicos e sinônimos para varrer o banco:\n> \`${terms.join(' | ')}\`\n\n*Filtrando e analisando as 15 decisões mais relevantes encontradas...*`, false);
 
                 btnText.innerHTML = '⚡ Varrendo banco...';
                 let scoredData = fullData.map(d => {
@@ -657,7 +685,8 @@ DECISÕES PARA ANÁLISE:
 ${contextDecisions}`;
 
                 const answer = await callCohereAPI(finalPrompt);
-                const dadosExportacao = { pergunta: userText, resposta: answer, base: contextDecisions };
+                // Agora o sistema salva também os IDs das 15 decisões usadas
+                const dadosExportacao = { pergunta: userText, resposta: answer, base: contextDecisions, ids: top15.map(d => d.id) };
                 appendToChat(answer, false, dadosExportacao);
 
             } catch (e) {
@@ -953,6 +982,19 @@ ${contextDecisions}`;
             link.href = URL.createObjectURL(blob); 
             link.download = `Parecer_JurisAI_${new Date().getTime()}.txt`; 
             link.click();
+        }
+        function filtrarTelaPorIA() {
+            if (!window.lastAiExport || !window.lastAiExport.ids) return;
+            window.iaFilterIds = window.lastAiExport.ids; // Guarda os IDs da IA na memória
+            
+            document.getElementById('searchInput').value = '';
+            document.getElementById('exactMatch').checked = false;
+            selectedTribunais = [];
+            selectedYears = [];
+            
+            closeAiDrawer(); // Fecha a gaveta
+            executeSearch(); // Manda pesquisar
+            showToast('👁️ Mostrando as decisões analisadas pela IA!');
         }
     </script>
 </body>
