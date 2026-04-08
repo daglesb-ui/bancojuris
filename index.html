@@ -134,7 +134,12 @@
                             ✨ Consultar IA na Base Inteira
                         </button>
                     </div>
-                    <span id="resultsCount" class="text-[10px] font-black text-slate-400 uppercase tracking-widest"></span>
+                    <div class="flex items-center gap-3">
+                        <button id="btnDeleteFiltered" onclick="deleteFiltered()" class="hidden text-[10px] font-black uppercase text-rose-500 bg-rose-50 dark:bg-rose-900/30 px-3 py-1 rounded-md hover:bg-rose-100 dark:hover:bg-rose-900/50 transition flex items-center gap-1" title="Apaga permanentemente as decisões desta pesquisa">
+                            🗑️ Apagar Filtrados
+                        </button>
+                        <span id="resultsCount" class="text-[10px] font-black text-slate-400 uppercase tracking-widest"></span>
+                    </div>
                 </div>
             </div>
             
@@ -459,6 +464,16 @@
             const pageResults = filteredTotal.slice(start, start + pageSize);
 
             document.getElementById('resultsCount').innerText = `${totalResults} RESULTADO(S)`;
+            
+            // Controle de exibição do botão Apagar Filtrados
+            const btnDeleteFiltered = document.getElementById('btnDeleteFiltered');
+            if (btnDeleteFiltered) {
+                if (filteredTotal.length > 0 && filteredTotal.length < fullData.length) {
+                    btnDeleteFiltered.classList.remove('hidden');
+                } else {
+                    btnDeleteFiltered.classList.add('hidden');
+                }
+            }
 
             const pagControls = document.getElementById('paginationControls');
             if (totalResults > pageSize) {
@@ -828,6 +843,27 @@
                     selectedTribunais = selectedTribunais.filter(t => t !== tribunal);
                     syncUI();
                     showToast(`🗑️ Todas as decisões do ${tribunal} foram apagadas!`);
+                };
+            }
+        }
+        
+        async function deleteFiltered() {
+            if (lastFilteredData.length === 0) return;
+            
+            if(confirm(`ATENÇÃO: Você está prestes a apagar permanentemente as ${lastFilteredData.length} decisões que estão filtradas na tela agora.\n\nTem certeza absoluta? Esta ação NÃO pode ser desfeita.`)) {
+                
+                const idsToDelete = new Set(lastFilteredData.map(d => d.id));
+                const toKeep = fullData.filter(d => !idsToDelete.has(d.id));
+                
+                const tx = db.transaction('geral', 'readwrite');
+                const store = tx.objectStore('geral');
+                await store.clear();
+                toKeep.forEach(d => store.put(d));
+                
+                tx.oncomplete = () => {
+                    fullData = toKeep; 
+                    clearFilters(); 
+                    showToast(`🗑️ ${idsToDelete.size} decisões foram apagadas com sucesso!`);
                 };
             }
         }
