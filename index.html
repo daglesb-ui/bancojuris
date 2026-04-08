@@ -995,32 +995,33 @@ ${contextDecisions}`;
             executeSearch(); // Manda pesquisar
             showToast('👁️ Mostrando as decisões analisadas pela IA!');
         }
-        function buscarDuplicidades() {
-            // Função para remover acentos, espaços e pontuações para comparar o "texto puro"
-            const norm = (s) => (s || '').toLowerCase().replace(/[^\w]/g, '');
+       function buscarDuplicidades() {
+            // Limpa acentos, espaços e pontuações para sobrar só letra e número puro
+            const norm = (s) => (s || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, '');
             
             let duplicadas = new Set();
             let mapProcessos = {};
             let mapEmentas = {};
 
             fullData.forEach(d => {
-                let proc = norm(d.tribunal) + norm(d.processo);
-                let ementa = norm(d.ementa).substring(0, 100); // Pega o começo do texto para comparar
-
-                // Agrupa por Órgão + Processo
-                if (proc.length > 5) {
-                    if (!mapProcessos[proc]) mapProcessos[proc] = [];
-                    mapProcessos[proc].push(d);
+                let procRaw = norm(d.processo);
+                
+                // REGRA 1: Só agrupa por processo se tiver NÚMEROS e for maior que 4 caracteres (foge dos "S/N", "N/A", "0")
+                if (procRaw.length > 4 && /\d/.test(procRaw)) {
+                    let procKey = norm(d.tribunal) + '_' + procRaw;
+                    if (!mapProcessos[procKey]) mapProcessos[procKey] = [];
+                    mapProcessos[procKey].push(d);
                 }
                 
-                // Agrupa por Texto da Ementa
-                if (ementa.length > 50) {
-                    if (!mapEmentas[ementa]) mapEmentas[ementa] = [];
-                    mapEmentas[ementa].push(d);
+                // REGRA 2: Só agrupa por ementa se o texto INTEIRO for idêntico (ignorando pontuação e espaços)
+                let ementaKey = norm(d.ementa);
+                if (ementaKey.length > 100) { // Ignora ementas vazias ou minúsculas
+                    if (!mapEmentas[ementaKey]) mapEmentas[ementaKey] = [];
+                    mapEmentas[ementaKey].push(d);
                 }
             });
 
-            // Separa os IDs de quem tem "irmãos gêmeos" no banco
+            // Coleta quem tem cópia
             Object.values(mapProcessos).forEach(arr => {
                 if (arr.length > 1) arr.forEach(d => duplicadas.add(d.id));
             });
@@ -1032,14 +1033,14 @@ ${contextDecisions}`;
                 return alert("Excelente! Nenhuma decisão duplicada encontrada no seu banco.");
             }
 
-            // Usa a mesma mecânica da IA para jogar só as duplicadas na tela
+            // Joga o resultado na tela
             window.iaFilterIds = Array.from(duplicadas);
             
             document.getElementById('searchInput').value = '';
             document.getElementById('exactMatch').checked = false;
             selectedTribunais = [];
             selectedYears = [];
-            document.getElementById('sortOrder').value = 'az'; // Ordena por Tribunal para juntar os pares
+            document.getElementById('sortOrder').value = 'az'; // Ordena por Órgão para os pares ficarem juntos
             
             executeSearch();
             showToast(`👯 ${duplicadas.size} possíveis duplicidades encontradas!`);
