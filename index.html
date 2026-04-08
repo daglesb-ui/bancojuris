@@ -569,16 +569,23 @@
             if (!response.ok) throw new Error(data.message || "Erro na comunicação com a Cohere");
             return data.text;
         }
-        function appendToChat(text, isUser = false) {
+       function appendToChat(text, isUser = false, exportData = null) {
             const chatArea = document.getElementById('aiChatArea');
             const colorClass = isUser ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 ml-8' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 mr-8';
             const title = isUser ? 'Você' : 'Juris AI (Cohere)';
             const formattedText = text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
 
+            let exportBtnHtml = '';
+            if (exportData) {
+                window.lastAiExport = exportData; // Salva na memória invisível para exportar depois
+                exportBtnHtml = `<div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700"><button onclick="exportarParecerIA()" class="text-[10px] bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold uppercase tracking-widest hover:bg-blue-50 hover:text-blue-600 dark:hover:text-blue-400 transition shadow-sm">📄 Exportar Parecer em TXT</button></div>`;
+            }
+
             chatArea.insertAdjacentHTML('beforeend', `
                 <div class="p-4 rounded-xl border shadow-sm text-sm text-slate-700 dark:text-slate-200 leading-relaxed ${colorClass}">
                     <strong class="block mb-2 text-xs uppercase tracking-widest opacity-50">${title}</strong>
                     ${formattedText}
+                    ${exportBtnHtml}
                 </div>
             `);
             chatArea.scrollTop = chatArea.scrollHeight;
@@ -638,11 +645,11 @@
 
                 btnText.innerHTML = '🧠 Gerando síntese...';
                 const contextDecisions = top15.map(d => `[${d.tribunal} - ${d.ano}] Processo: ${d.processo}\nEmenta: ${d.ementa}`).join('\n\n');
-              const finalPrompt = `Você é um auditor de controle externo sênior. Responda à pergunta do usuário baseando-se ESTRITA e EXCLUSIVAMENTE nas decisões abaixo. 
+              const finalPrompt = `Você é um auditor de controle externo sênior. Responda à pergunta baseando-se ESTRITA e EXCLUSIVAMENTE nas decisões abaixo. 
                 
-Diretrizes:
-1. Síntese: Apresente o entendimento jurisprudencial consolidado ou majoritário presente nestas decisões.
-2. Juízo de Valor e Contexto Teórico: Faça uma análise crítica da postura dos Tribunais. Extraindo a lógica APENAS das ementas fornecidas, explique os fundamentos jurídicos, a severidade do entendimento, tendências ou os princípios que os relatores mais invocaram para decidir dessa forma. Não invente doutrina externa.
+DIRETRIZES OBRIGATÓRIAS:
+1. Sempre que afirmar um entendimento ou citar uma regra, você DEVE inserir a citação exata no final da frase no formato: [Órgão - Processo]. Exemplo: "...conforme entendimento consolidado [TCU - 012.345/2022-11]".
+2. Não invente nenhuma informação, lei ou doutrina que não esteja escrita nas ementas enviadas.
 
 Pergunta: "${userText}"
 
@@ -650,7 +657,8 @@ DECISÕES PARA ANÁLISE:
 ${contextDecisions}`;
 
                 const answer = await callCohereAPI(finalPrompt);
-                appendToChat(answer, false);
+                const dadosExportacao = { pergunta: userText, resposta: answer, base: contextDecisions };
+                appendToChat(answer, false, dadosExportacao);
 
             } catch (e) {
                 appendToChat(`❌ Erro: <b>${e.message}</b>`, false);
@@ -924,6 +932,27 @@ ${contextDecisions}`;
                 all.forEach(d => { if(d.batchId !== last) store.put(d); }); 
                 tx.oncomplete = () => syncUI(); 
             } 
+        }
+        function exportarParecerIA() {
+            if (!window.lastAiExport) return alert("Nenhum parecer disponível para exportação.");
+            
+            const exp = window.lastAiExport;
+            let txt = "=================================================\n";
+            txt += " PARECER DE JURISPRUDÊNCIA - GERADO POR JURIS AI \n";
+            txt += "=================================================\n\n";
+            txt += `PERGUNTA DO USUÁRIO:\n${exp.pergunta}\n\n`;
+            txt += "-------------------------------------------------\n\n";
+            txt += `SÍNTESE E ANÁLISE DA IA:\n${exp.resposta}\n\n`;
+            txt += "=================================================\n";
+            txt += " DECISÕES UTILIZADAS COMO BASE (TOP 15):\n";
+            txt += "=================================================\n\n";
+            txt += exp.base;
+
+            const blob = new Blob([txt], {type: "text/plain;charset=utf-8"}); 
+            const link = document.createElement("a"); 
+            link.href = URL.createObjectURL(blob); 
+            link.download = `Parecer_JurisAI_${new Date().getTime()}.txt`; 
+            link.click();
         }
     </script>
 </body>
