@@ -70,16 +70,16 @@
 
             <details class="mb-4 bg-purple-50 dark:bg-purple-900/20 rounded-2xl border border-purple-200 dark:border-purple-800 group transition-all">
                 <summary class="p-4 text-[10px] font-black text-purple-700 dark:text-purple-400 uppercase tracking-widest cursor-pointer list-none flex justify-between items-center hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-2xl">
-                    <span class="flex items-center gap-2">🤖 Configurar IA Gemini</span>
+                    <span class="flex items-center gap-2">🤖 Configurar IA Cohere</span>
                     <span class="text-purple-400 group-open:rotate-180 transition-transform">▼</span>
                 </summary>
                 <div class="p-4 pt-0 space-y-3">
-                    <p class="text-[9px] text-purple-600 dark:text-purple-400 font-bold leading-tight">Cole sua chave da API do Google Gemini.</p>
+                    <p class="text-[9px] text-purple-600 dark:text-purple-400 font-bold leading-tight">Cole sua Trial Key da API da Cohere.</p>
                     <div class="flex gap-2">
-                        <input type="password" id="geminiApiKey" placeholder="Sua API Key Gemini..." class="flex-1 w-full p-2.5 text-[10px] font-mono rounded-lg border border-purple-200 dark:border-purple-700 dark:bg-slate-800 dark:text-white outline-none focus:border-purple-500">
+                        <input type="password" id="cohereApiKey" placeholder="Sua API Key Cohere..." class="flex-1 w-full p-2.5 text-[10px] font-mono rounded-lg border border-purple-200 dark:border-purple-700 dark:bg-slate-800 dark:text-white outline-none focus:border-purple-500">
                         <button onclick="saveApiKey()" class="bg-purple-600 hover:bg-purple-700 text-white px-3 rounded-lg text-[10px] font-bold shadow-sm transition">Salvar</button>
                     </div>
-                    <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-[9px] text-blue-500 hover:underline block mt-1">Obter chave gratuita ↗</a>
+                    <a href="https://dashboard.cohere.com/api-keys" target="_blank" class="text-[9px] text-blue-500 hover:underline block mt-1">Obter chave gratuita ↗</a>
                 </div>
             </details>
 
@@ -249,11 +249,11 @@
             document.documentElement.classList.add('dark');
         }
 
-        let geminiKey = localStorage.getItem('gemini_api_key_v1') || '';
-        document.getElementById('geminiApiKey').value = geminiKey;
+        let cohereKey = localStorage.getItem('cohere_api_key_v1') || '';
+        document.getElementById('cohereApiKey').value = cohereKey;
         function saveApiKey() {
-            geminiKey = document.getElementById('geminiApiKey').value.trim();
-            localStorage.setItem('gemini_api_key_v1', geminiKey);
+            cohereKey = document.getElementById('cohereApiKey').value.trim();
+            localStorage.setItem('cohere_api_key_v1', cohereKey);
             showToast('✅ Chave da IA salva!');
         }
 
@@ -509,9 +509,9 @@
             }).join('') || `<div class="text-center py-20"><p class="text-slate-400 uppercase font-black tracking-widest text-sm">Nenhuma decisão encontrada</p></div>`;
         }
 
-        // ================= IA RAG LOGIC (BUSCA SEMÂNTICA 2 ETAPAS COM GEMINI) =================
+       // ================= IA RAG LOGIC (COHERE) =================
         function openAiDrawer() {
-            if (!geminiKey) return alert("Configure a chave da IA Gemini na barra lateral.");
+            if (!cohereKey) return alert("Configure a chave da IA Cohere na barra lateral.");
             if (fullData.length === 0) return alert("Seu banco de dados está vazio.");
             
             document.getElementById('aiDrawerOverlay').classList.remove('hidden');
@@ -527,24 +527,28 @@
             }, 300);
         }
 
-        async function callGeminiAPI(promptText) {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+        async function callCohereAPI(promptText) {
+            const response = await fetch('https://api.cohere.ai/v1/chat', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${cohereKey}`
+                },
                 body: JSON.stringify({ 
-                    contents: [{ parts: [{ text: promptText }] }],
-                    systemInstruction: { parts: [{text: "Você é um assistente de auditor de controle externo. Responda de forma direta."}]}
+                    model: 'command-r',
+                    message: promptText,
+                    preamble: "Você é um assistente de auditor de controle externo. Responda em português de forma clara e baseada estritamente nas decisões fornecidas."
                 })
             });
             const data = await response.json();
-            if (!response.ok) throw new Error(data.error?.message || response.statusText);
-            return data.candidates[0].content.parts[0].text;
+            if (!response.ok) throw new Error(data.message || "Erro na comunicação com a Cohere");
+            return data.text;
         }
 
         function appendToChat(text, isUser = false) {
             const chatArea = document.getElementById('aiChatArea');
             const colorClass = isUser ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 ml-8' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 mr-8';
-            const title = isUser ? 'Você' : 'Juris AI';
+            const title = isUser ? 'Você' : 'Juris AI (Cohere)';
             const formattedText = text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
 
             chatArea.insertAdjacentHTML('beforeend', `
@@ -567,11 +571,10 @@
             const btnText = document.getElementById('aiBtnText');
 
             try {
-                // ETAPA 1: IA extrai as palavras-chave
                 btnText.innerHTML = '🔍 Extraindo termos...';
-                const promptKeywords = `Aja como um especialista em indexação jurídica. Baseado na pergunta do usuário, extraia no máximo 5 palavras-chave ou termos curtos essenciais para buscar em um banco de jurisprudência. Retorne APENAS as palavras separadas por espaço, sem explicações, sem numeração. Pergunta: "${userText}"`;
+                const promptKeywords = `Extraia no máximo 5 palavras-chave ou termos curtos essenciais da seguinte pergunta para buscar em um banco de jurisprudência. Retorne APENAS as palavras separadas por espaço, sem mais nada. Pergunta: "${userText}"`;
                 
-                const keywordsResponse = await callGeminiAPI(promptKeywords);
+                const keywordsResponse = await callCohereAPI(promptKeywords);
                 const keywordsRaw = keywordsResponse.replace(/[^\w\sÀ-ÿ]/g, '').trim();
                 const terms = keywordsRaw.split(/\s+/).filter(t => t.length > 2);
 
@@ -579,7 +582,6 @@
 
                 appendToChat(`*Buscando na base total (${fullData.length} decisões) pelos termos: ${terms.join(', ')}...*`, false);
 
-                // ETAPA 2: Varre o banco todo em busca das Top 50
                 btnText.innerHTML = '⚡ Varrendo banco...';
                 let scoredData = fullData.map(d => {
                     let score = 0;
@@ -595,17 +597,16 @@
                 let top50 = scoredData.filter(d => d.score > 0).sort((a, b) => b.score - a.score).slice(0, 50).map(d => d.item);
 
                 if (top50.length === 0) {
-                    appendToChat(`Não encontrei nenhuma decisão no banco inteiro correspondente a esses termos para basear a resposta. Tente palavras diferentes.`, false);
+                    appendToChat(`Não encontrei nenhuma decisão no banco correspondente a esses termos.`, false);
                     btnText.innerText = 'Pesquisar no Banco';
                     return;
                 }
 
-                // ETAPA 3: IA analisa as Top 50 e dá a resposta final
                 btnText.innerHTML = '🧠 Gerando síntese...';
                 const contextDecisions = top50.map(d => `[${d.tribunal} - ${d.ano}] Processo: ${d.processo}\nEmenta: ${d.ementa}`).join('\n\n');
-                const finalPrompt = `Você é um assistente de auditor de controle externo. Baseado ESTRITAMENTE nas decisões abaixo (extraídas do banco como as mais relevantes), responda de forma clara à pergunta do usuário.\n\nPergunta: "${userText}"\n\nDECISÕES PARA ANÁLISE:\n${contextDecisions}`;
+                const finalPrompt = `Baseado ESTRITAMENTE nas decisões abaixo, responda de forma clara à pergunta do usuário.\n\nPergunta: "${userText}"\n\nDECISÕES PARA ANÁLISE:\n${contextDecisions}`;
 
-                const answer = await callGeminiAPI(finalPrompt);
+                const answer = await callCohereAPI(finalPrompt);
                 appendToChat(answer, false);
 
             } catch (e) {
