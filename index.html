@@ -565,16 +565,25 @@
             const btnText = document.getElementById('aiBtnText');
 
             try {
-                btnText.innerHTML = '🔍 Extraindo termos...';
-                const promptKeywords = `Extraia no máximo 5 palavras-chave ou termos curtos essenciais da seguinte pergunta para buscar em um banco de jurisprudência. Retorne APENAS as palavras separadas por espaço, sem explicações. Pergunta: "${userText}"`;
+                let terms = [];
                 
-                const keywordsResponse = await callCohereAPI(promptKeywords);
-                const keywordsRaw = keywordsResponse.replace(/[^\w\sÀ-ÿ]/g, '').trim();
-                const terms = keywordsRaw.split(/\s+/).filter(t => t.length > 2);
+                // TRAVA INTELIGENTE: Se tem número (ex: ano, processo, lei), não inventa sinônimo. Busca exato.
+                if (/\d/.test(userText)) {
+                    btnText.innerHTML = '🔍 Busca exata...';
+                    terms = userText.split(/\s+/).filter(t => t.length > 2);
+                } else {
+                    // Se é só texto (ex: "fraude em asfalto"), pede pra IA expandir e achar sinônimos jurídicos
+                    btnText.innerHTML = '🔍 Expandindo contexto...';
+                    const promptKeywords = `Você é um auditor de controle externo. O usuário quer buscar jurisprudência sobre: "${userText}". Expanda essa busca gerando até 10 palavras-chave estratégicas. OBRIGATÓRIO: inclua sinônimos técnicos, jargões de licitação/contrato e conceitos correlatos ao tema (ex: se o tema é 'asfalto', inclua 'pavimentação', 'recapeamento', 'rodovia'). Retorne APENAS as palavras separadas por espaço, sem vírgulas, sem explicações.`;
+                    
+                    const keywordsResponse = await callCohereAPI(promptKeywords);
+                    const keywordsRaw = keywordsResponse.replace(/[^\w\sÀ-ÿ]/g, '').trim();
+                    terms = keywordsRaw.split(/\s+/).filter(t => t.length > 2);
+                }
 
                 if (terms.length === 0) terms.push(...userText.split(/\s+/).filter(t => t.length > 3));
 
-                appendToChat(`*Buscando na base total (${fullData.length} decisões) pelos termos: ${terms.join(', ')}...*`, false);
+                appendToChat(`🎯 **Estratégia de Busca Montada:**\nPara abranger todo o contexto, a IA expandiu sua pergunta e está varrendo o banco procurando pelos seguintes sinônimos e termos técnicos:\n> \`${terms.join(' | ')}\`\n\n*Filtrando e analisando as 15 decisões mais relevantes encontradas...*`, false);
 
                 btnText.innerHTML = '⚡ Varrendo banco...';
                 let scoredData = fullData.map(d => {
@@ -588,17 +597,27 @@
                     return { item: d, score: score };
                 });
 
-                let top50 = scoredData.filter(d => d.score > 0).sort((a, b) => b.score - a.score).slice(0, 50).map(d => d.item);
+                // MUDANÇA PARA TOP 15: Mais rápido, mais barato e foca só no "filé mignon"
+                let top15 = scoredData.filter(d => d.score > 0).sort((a, b) => b.score - a.score).slice(0, 15).map(d => d.item);
 
-                if (top50.length === 0) {
+                if (top15.length === 0) {
                     appendToChat(`Não encontrei nenhuma decisão no banco correspondente a esses termos.`, false);
                     btnText.innerText = 'Pesquisar no Banco';
                     return;
                 }
 
                 btnText.innerHTML = '🧠 Gerando síntese...';
-                const contextDecisions = top50.map(d => `[${d.tribunal} - ${d.ano}] Processo: ${d.processo}\nEmenta: ${d.ementa}`).join('\n\n');
-                const finalPrompt = `Baseado ESTRITAMENTE nas decisões abaixo, responda de forma clara à pergunta do usuário.\n\nPergunta: "${userText}"\n\nDECISÕES PARA ANÁLISE:\n${contextDecisions}`;
+                const contextDecisions = top15.map(d => `[${d.tribunal} - ${d.ano}] Processo: ${d.processo}\nEmenta: ${d.ementa}`).join('\n\n');
+              const finalPrompt = `Você é um auditor de controle externo sênior. Responda à pergunta do usuário baseando-se ESTRITA e EXCLUSIVAMENTE nas decisões abaixo. 
+                
+Diretrizes:
+1. Síntese: Apresente o entendimento jurisprudencial consolidado ou majoritário presente nestas decisões.
+2. Juízo de Valor e Contexto Teórico: Faça uma análise crítica da postura dos Tribunais. Extraindo a lógica APENAS das ementas fornecidas, explique os fundamentos jurídicos, a severidade do entendimento, tendências ou os princípios que os relatores mais invocaram para decidir dessa forma. Não invente doutrina externa.
+
+Pergunta: "${userText}"
+
+DECISÕES PARA ANÁLISE:
+${contextDecisions}`;
 
                 const answer = await callCohereAPI(finalPrompt);
                 appendToChat(answer, false);
