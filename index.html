@@ -63,6 +63,7 @@
             
             <button id="reportBtn" onclick="generateBasketReport()" class="hidden w-full mb-6 bg-emerald-600 text-white p-4 rounded-xl font-black shadow-lg shadow-emerald-200 dark:shadow-none uppercase text-[11px] tracking-widest hover:bg-emerald-700 transition">📋 Cesta de Decisões (<span id="basketQty">0</span>)</button>
             <button onclick="buscarDuplicidades()" class="w-full mb-6 bg-amber-500 text-white p-4 rounded-xl font-black shadow-lg shadow-amber-200 dark:shadow-none uppercase text-[11px] tracking-widest hover:bg-amber-600 transition">👯 Buscar Duplicadas</button>
+            <button id="btnFaxina" onclick="apagarDuplicadasPermanente()" class="hidden w-full mb-6 bg-rose-600 text-white p-4 rounded-xl font-black shadow-lg hover:bg-rose-700 transition uppercase text-[11px] tracking-widest">🔥 Executar Faxina (Manter 1)</button>
             <div class="mb-6 bg-slate-800 dark:bg-slate-900 rounded-3xl p-6 text-center shadow-xl border-b-4 border-blue-500">
                 <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Decisões Cadastradas</p>
                 <p id="grandTotal" class="text-4xl font-black text-white tracking-tighter">0</p>
@@ -173,6 +174,9 @@
             <textarea id="aiInput" class="w-full p-4 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 outline-none focus:border-purple-500 text-sm dark:text-white custom-scroll resize-none" rows="3" placeholder="Ex: Qual o entendimento dos TCs sobre sobrepreço em obras rodoviárias?"></textarea>
             <div class="flex justify-end mt-3">
                 <button onclick="askAI()" class="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs uppercase tracking-widest rounded-lg shadow-md transition flex items-center gap-2">
+                    <button id="fundamentarBtn" onclick="fundamentarTexto()" class="w-full mt-2 bg-emerald-600 text-white p-4 rounded-xl font-black shadow-lg hover:bg-emerald-700 transition uppercase text-[11px] tracking-widest flex items-center justify-center gap-2">
+    <span id="fundBtnText">⚖️ Fundamentar meu Texto</span>
+</button>
                     <span id="aiBtnText">Pesquisar no Banco</span>
                 </button>
             </div>
@@ -864,16 +868,48 @@ ${contextDecisions}`;
         }
 
         async function processImport() { 
-            const paste = document.getElementById('jsonPasteArea').value; 
-            if (paste) { 
-                try { 
-                    const data = JSON.parse(paste); 
-                    const batchId = "Lote_" + Date.now(); 
-                    await saveAll('geral', (Array.isArray(data) ? data : [data]).map(item => mapData(item, batchId))); 
-                    syncUI(); closeImportModal(); document.getElementById('jsonPasteArea').value = ''; 
-                } catch(e) { alert("O texto colado não é um JSON válido."); } 
-            } 
+    const paste = document.getElementById('jsonPasteArea').value; 
+    if (!paste) return;
+
+    try { 
+        const data = JSON.parse(paste); 
+        const batchId = "Lote_" + Date.now(); 
+        const rawItems = Array.isArray(data) ? data : [data];
+        
+        // Função auxiliar de normalização
+        const norm = (s) => (s || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, '');
+        const existentes = new Set(fullData.map(d => norm(d.ementa)));
+        
+        let filtrados = [];
+        let duplicadosCount = 0;
+        
+        rawItems.forEach(n => {
+            let txt = n.ementa || n.texto || n.resumo_analitico || n.resumo || "";
+            let key = norm(txt);
+            if (existentes.has(key)) {
+                duplicadosCount++;
+            } else {
+                filtrados.push(n);
+                existentes.add(key); // Evita duplicar dentro do próprio lote novo
+            }
+        });
+
+        if (filtrados.length === 0) {
+            alert(`🚫 Importação Cancelada: Todas as ${duplicadosCount} decisões já existem no seu banco.`);
+            return;
         }
+
+        await saveAll('geral', filtrados.map(item => mapData(item, batchId))); 
+        syncUI(); 
+        closeImportModal(); 
+        document.getElementById('jsonPasteArea').value = ''; 
+        
+        alert(`✅ Importação concluída!\n- ${filtrados.length} novas decisões adicionadas.\n- ${duplicadosCount} duplicidades detectadas e ignoradas.`);
+        
+    } catch(e) { 
+        alert("Erro no processamento: Certifique-se de que o JSON está no formato correto."); 
+    } 
+}
         
         async function handleFileSelect(e) { 
             const file = e.target.files[0]; if (!file) return; 
@@ -1038,7 +1074,128 @@ ${contextDecisions}`;
             document.getElementById('sortOrder').value = 'az'; 
             
             executeSearch();
+          document.getElementById('btnFaxina').classList.remove('hidden');
             showToast(`👯 ${duplicadas.size} decisões com textos idênticos encontradas!`);
+        }
+        async function apagarDuplicadasPermanente() {
+            const norm = (s) => (s || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, '');
+            let seen = new Set();
+            let toDelete = [];
+            
+            const all = await getAll('geral');
+            
+            all.forEach(d => {
+                let key = norm(d.ementa);
+                if (key.length > 50) {
+                    if (seen.has(key)) {
+                        toDelete.push(d.id); 
+                    } else {
+                        seen.add(key); 
+                    }
+                }
+            });
+
+            if (toDelete.length === 0) return alert("Nenhuma duplicata para apagar.");
+
+            if (confirm(`CUIDADO: Isso apagará permanentemente ${toDelete.length} decisões repetidas. Manteremos apenas a primeira versão de cada uma no banco. Prosseguir?`)) {
+                const tx = db.transaction('geral', 'readwrite');
+                const store = tx.objectStore('geral');
+                toDelete.forEach(id => store.delete(id));
+                tx.oncomplete = () => {
+                    window.iaFilterIds = null; 
+                    syncUI();
+                    document.getElementById('btnFaxina').classList.add('hidden');
+                    alert(`✅ Faxina concluída! ${toDelete.length} duplicatas foram removidas.`);
+                };
+            }
+        }
+        async function fundamentarTexto() {
+            const inputEl = document.getElementById('aiInput');
+            const userText = inputEl.value.trim();
+            
+            if (!userText) return alert("Cole o trecho do seu parecer ou relatório antes de clicar em Fundamentar.");
+
+            inputEl.value = '';
+            appendToChat(`**TRECHO DA MINHA PEÇA:**\n*"${userText}"*`, true);
+
+            const btnText = document.getElementById('fundBtnText');
+            const originalBtnHtml = btnText.innerHTML;
+
+            try {
+                btnText.innerHTML = '🔍 Analisando tese...';
+                
+                // Extrai termos do seu texto para achar decisões parecidas no banco
+                const promptKeywords = `Extraia jargões técnicos e palavras-chave do seguinte parágrafo jurídico para usarmos em uma busca de banco de dados. Retorne APENAS palavras soltas separadas por espaço. Parágrafo: "${userText}"`;
+                let keywordsResponse = await callCohereAPI(promptKeywords);
+                
+                const ignorar = ['qual', 'entendimento', 'sobre', 'que', 'ser', 'ter', 'poder', 'para', 'dos', 'das', 'com', 'como', 'estabelecido', 'ou', 'em', 'um', 'uma', 'na', 'no', 'aos', 'por', 'pelo', 'pela', 'tem', 'deve', 'são', 'mais', 'conforme', 'autos', 'demonstrado', 'tendo', 'vista'];
+                
+                let terms = keywordsResponse.split(/[\s,]+/)
+                    .map(t => normalizar(t.trim().replace(/[^\wÀ-ÿ0-9-]/g, ''))) 
+                    .filter(t => t.length > 2 && !ignorar.includes(t));
+
+                appendToChat(`🎯 **Buscando Fundamentação:**\nA IA está varrendo o banco procurando jurisprudência que embase os seguintes conceitos:\n> \`${terms.join(' | ')}\``, false);
+
+                btnText.innerHTML = '⚡ Varrendo banco...';
+                
+                let scoredData = fullData.map(d => {
+                    let score = 0;
+                    const searchBody = normalizar(`${d.tribunal} ${d.processo} ${d.ementa}`);
+                    terms.forEach(t => {
+                        const regex = new RegExp(t, 'gi');
+                        const matches = searchBody.match(regex);
+                        if (matches) score += matches.length;
+                    });
+                    return { item: d, score: score };
+                });
+
+                // Pega o top 15 para mandar para a IA analisar
+                let top15 = scoredData.filter(d => d.score > 0).sort((a, b) => b.score - a.score).slice(0, 15).map(d => d.item);
+
+                if (top15.length === 0) {
+                    appendToChat(`Não encontrei nenhuma decisão no banco que se alinhe a esse trecho.`, false);
+                    btnText.innerHTML = originalBtnHtml;
+                    return;
+                }
+
+                btnText.innerHTML = '🧠 Selecionando citações...';
+                const contextDecisions = top15.map(d => `[${d.tribunal} - ${d.processo}]\nEmenta: ${d.ementa}`).join('\n\n');
+                
+                // PROMPT REVERSO: A IA não vai explicar, vai apenas selecionar e formatar a citação
+                const finalPrompt = `Atue como um assistente de formatação jurídica.
+O auditor escreveu o seguinte trecho em seu relatório: "${userText}"
+
+Sua tarefa: Analise as decisões abaixo e selecione APENAS as 3 decisões que melhor servem de fundamentação legal para o texto do auditor. 
+Retorne EXATAMENTE no seguinte formato para cada uma:
+**[Órgão - Processo]**
+> "Cole o trecho exato e mais relevante da ementa aqui..."
+
+NÃO explique. NÃO crie texto novo. Apenas liste as citações perfeitas para colar na peça.
+
+DECISÕES PARA ANÁLISE:
+${contextDecisions}`;
+
+                const answer = await callCohereAPI(finalPrompt);
+                
+                // Passa os IDs para o botão "Ver na tela" e "Exportar" funcionarem também!
+                const dadosExportacao = { 
+                    pergunta: `FUNDAMENTAÇÃO PARA O TEXTO:\n"${userText}"`, 
+                    resposta: answer, 
+                    base: contextDecisions, 
+                    ids: top15.map(d => d.id) 
+                };
+                
+                appendToChat(answer, false, dadosExportacao);
+
+            } catch (e) {
+                let msgErro = e.message;
+                if (msgErro.includes("429") || msgErro.toLowerCase().includes("rate limit") || msgErro.toLowerCase().includes("too many requests")) {
+                    msgErro = "⚠️ Limite de consultas atingido. Aguarde 1 minuto.";
+                }
+                appendToChat(`❌ Erro: <b>${msgErro}</b>`, false);
+            } finally {
+                btnText.innerHTML = originalBtnHtml;
+            }
         }
     </script>
 </body>
