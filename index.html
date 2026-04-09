@@ -572,22 +572,23 @@
             }, 300);
         }
 
-        async function callCohereAPI(promptText) {
-            const response = await fetch('https://api.cohere.ai/v1/chat', {
+       async function callCohereRerank(query, documents) {
+            const response = await fetch('https://api.cohere.ai/v1/rerank', {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${cohereKey}`
                 },
-                body: JSON.stringify({ 
-                    model: 'command-r-plus-08-2024', // <-- Nome com a versão obrigatória
-                    message: promptText,
-                    preamble: "Você é um assistente de auditor de controle externo. Responda em português de forma clara e baseada estritamente nas decisões fornecidas."
+                body: JSON.stringify({
+                    model: 'rerank-multilingual-v3.0',
+                    query: query,
+                    documents: documents,
+                    top_n: 15
                 })
             });
             const data = await response.json();
-            if (!response.ok) throw new Error(data.message || "Erro na comunicação com a Cohere");
-            return data.text;
+            if (!response.ok) throw new Error(data.message || "Erro no Re-rank Semântico da Cohere");
+            return data;
         }
        function appendToChat(text, isUser = false, exportData = null) {
             const chatArea = document.getElementById('aiChatArea');
@@ -634,60 +635,56 @@
             appendToChat(userText, true);
 
             const btnText = document.getElementById('aiBtnText');
+            const originalBtnHtml = btnText.innerHTML;
 
-          try {
-                btnText.innerHTML = '🔍 Mapeando contexto...';
+            try {
+                btnText.innerHTML = '🔍 Extraindo contexto...';
                 
-                // 1. Prompt blindado: força a IA a buscar NÚMEROS e proíbe expressões compostas
-                const promptKeywords = `Atue como um indexador jurídico. O usuário pesquisou: "${userText}". 
-Sua tarefa: Extraia jargões, sinônimos e PRINCIPALMENTE NÚMEROS e prazos citados (ex: 12, 24).
-REGRA ABSOLUTA: Retorne APENAS PALAVRAS SOLTAS separadas por espaço. NUNCA retorne expressões compostas (ex: ao invés de "reajuste contratual", retorne "reajuste contrato repactuação periodicidade anual 12 24 meses").`;
-
+                // 1. Extrai palavras-chave só para fazer uma peneira inicial rápida
+                const promptKeywords = `Extraia apenas 5 palavras-chave cruciais da pergunta: "${userText}". Retorne APENAS palavras soltas separadas por espaço.`;
                 let keywordsResponse = await callCohereAPI(promptKeywords);
-                keywordsResponse = keywordsResponse.replace(/aqui|estão|palavras|chave|termos|abaixo/gi, '');
                 
-                // Filtro de Lixo (Stopwords) para não poluir a busca
-                const ignorar = ['qual', 'entendimento', 'sobre', 'que', 'ser', 'ter', 'poder', 'para', 'dos', 'das', 'com', 'como', 'estabelecido', 'ou', 'em', 'um', 'uma', 'na', 'no', 'aos', 'por', 'pelo', 'pela', 'tem', 'deve', 'são', 'mais'];
+                const ignorar = ['qual', 'entendimento', 'sobre', 'que', 'ser', 'ter', 'poder', 'para', 'dos', 'das', 'com', 'como', 'ou', 'em', 'um', 'uma', 'na', 'no', 'aos', 'por', 'pelo', 'pela', 'tem', 'deve', 'são', 'mais'];
                 
-                // 2. Separa os sinônimos da IA garantindo que CADA PALAVRA lute por si só
-                let aiTerms = keywordsResponse.split(/[\s,]+/)
+                let terms = keywordsResponse.split(/[\s,]+/)
                     .map(t => normalizar(t.trim().replace(/[^\wÀ-ÿ0-9-]/g, ''))) 
-                    .filter(t => t.length > 1 && !ignorar.includes(t)); // length > 1 salvou o '12' e o '24'!
+                    .filter(t => t.length > 2 && !ignorar.includes(t));
 
-                // 3. Pega TUDO que você digitou e joga na busca para a IA não descartar a sua intenção
-                let userTerms = userText.split(/[\s,]+/)
-                    .map(t => normalizar(t.trim().replace(/[^\wÀ-ÿ0-9-]/g, '')))
-                    .filter(t => t.length > 1 && !ignorar.includes(t));
-
-                // 4. Junta seus termos com os da IA e remove as palavras repetidas
-                let terms = [...new Set([...aiTerms, ...userTerms])].filter(t => t !== "");
-
-                appendToChat(`🎯 **Estratégia de Busca Montada:**\nPara varrer o banco com força máxima, juntamos seus termos originais com os sinônimos da IA:\n> \`${terms.join(' | ')}\`\n\n*Filtrando e analisando as 15 decisões mais relevantes encontradas...*`, false);
-
-                btnText.innerHTML = '⚡ Varrendo banco...';
+                btnText.innerHTML = '⚡ Pré-filtrando banco...';
                 
+                // Peneira burra: Pega tudo que tiver pelo menos uma pontuação baixa
                 let scoredData = fullData.map(d => {
                     let score = 0;
                     const searchBody = normalizar(`${d.tribunal} ${d.processo} ${d.ementa}`);
                     terms.forEach(t => {
-                        const regex = new RegExp(t, 'gi');
-                        const matches = searchBody.match(regex);
-                        if (matches) score += matches.length;
+                        if (searchBody.includes(t)) score++;
                     });
                     return { item: d, score: score };
                 });
 
-                let top15 = scoredData.filter(d => d.score > 0).sort((a, b) => b.score - a.score).slice(0, 15).map(d => d.item);
+                // Seleciona as 100 melhores na peneira burra
+                let top100 = scoredData.filter(d => d.score > 0).sort((a, b) => b.score - a.score).slice(0, 100).map(d => d.item);
 
-                if (top15.length === 0) {
-                    appendToChat(`Não encontrei nenhuma decisão no banco correspondente a esses termos.`, false);
-                    btnText.innerText = 'Pesquisar no Banco';
+                if (top100.length === 0) {
+                    appendToChat(`Não encontrei nenhuma decisão na base que contenha os termos iniciais para análise.`, false);
+                    btnText.innerHTML = originalBtnHtml;
                     return;
                 }
 
-                btnText.innerHTML = '🧠 Gerando síntese...';
+                appendToChat(`🎯 **Análise Semântica (Rerank):**\nEncontrei ${top100.length} decisões com palavras semelhantes. Agora a IA está lendo o **significado** de cada uma para separar apenas as que respondem exatamente ao seu contexto jurídico.`, false);
+                btnText.innerHTML = '🧠 Lendo significados...';
+
+                // 2. A MÁGICA: Manda as 100 decisões para a Cohere ler e ordenar pelo CONTEXTO da pergunta
+                const docTexts = top100.map(d => d.ementa.substring(0, 3000)); // Manda o texto para a IA ler
+                const rerankResponse = await callCohereRerank(userText, docTexts);
+                
+                // Pega as 15 que a IA classificou como as mais perfeitas para o significado
+                let top15 = rerankResponse.results.map(r => top100[r.index]);
+
+                btnText.innerHTML = '✍️ Redigindo resposta...';
                 const contextDecisions = top15.map(d => `[${d.tribunal} - ${d.ano}] Processo: ${d.processo}\nEmenta: ${d.ementa}`).join('\n\n');
-              const finalPrompt = `Você é um auditor de controle externo sênior. Responda à pergunta baseando-se ESTRITA e EXCLUSIVAMENTE nas decisões abaixo. 
+                
+                const finalPrompt = `Você é um auditor de controle externo sênior. Responda à pergunta baseando-se ESTRITA e EXCLUSIVAMENTE nas decisões abaixo. 
                 
 DIRETRIZES OBRIGATÓRIAS:
 1. Sempre que afirmar um entendimento ou citar uma regra, você DEVE inserir a citação exata no final da frase no formato: [Órgão - Processo]. Exemplo: "...conforme entendimento consolidado [TCU - 012.345/2022-11]".
@@ -699,14 +696,18 @@ DECISÕES PARA ANÁLISE:
 ${contextDecisions}`;
 
                 const answer = await callCohereAPI(finalPrompt);
-                // Agora o sistema salva também os IDs das 15 decisões usadas
+                
                 const dadosExportacao = { pergunta: userText, resposta: answer, base: contextDecisions, ids: top15.map(d => d.id) };
                 appendToChat(answer, false, dadosExportacao);
 
             } catch (e) {
-                appendToChat(`❌ Erro: <b>${e.message}</b>`, false);
+                let msgErro = e.message;
+                if (msgErro.includes("429") || msgErro.toLowerCase().includes("rate limit") || msgErro.toLowerCase().includes("too many requests")) {
+                    msgErro = "⚠️ Limite de consultas atingido. Aguarde 1 minuto.";
+                }
+                appendToChat(`❌ Erro: <b>${msgErro}</b>`, false);
             } finally {
-                btnText.innerText = 'Pesquisar no Banco';
+                btnText.innerHTML = originalBtnHtml;
             }
         }
         // =================================================
