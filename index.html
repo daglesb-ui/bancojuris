@@ -572,7 +572,25 @@
             }, 300);
         }
 
-       async function callCohereRerank(query, documents) {
+      async function callCohereAPI(promptText) {
+            const response = await fetch('https://api.cohere.ai/v1/chat', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${cohereKey}`
+                },
+                body: JSON.stringify({ 
+                    model: 'command-r-plus-08-2024', 
+                    message: promptText,
+                    preamble: "Você é um assistente de auditor de controle externo. Responda em português de forma clara e baseada estritamente nas decisões fornecidas."
+                })
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || "Erro na comunicação com a Cohere");
+            return data.text;
+        }
+
+        async function callCohereRerank(query, documents) {
             const response = await fetch('https://api.cohere.ai/v1/rerank', {
                 method: 'POST',
                 headers: { 
