@@ -131,6 +131,10 @@
                             <input type="checkbox" id="exactMatch" onchange="resetPageAndSearch()" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-0">
                             <span class="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 group-hover:text-slate-600 transition">Pesquisa por Termo Exato</span>
                         </label>
+                        <label class="flex items-center gap-2 text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 transition">
+    <input type="checkbox" id="palavraInteira" onchange="executeSearch()" class="w-4 h-4 rounded border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-purple-600 focus:ring-purple-500 cursor-pointer">
+    Palavra Inteira
+</label>
                         <button onclick="openAiDrawer()" class="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 px-3 py-1 rounded-md hover:bg-purple-100 transition flex items-center gap-1">
                             ✨ Consultar IA na Base Inteira
                         </button>
@@ -402,15 +406,15 @@
             resetPageAndSearch();
         }
 
-      function highlight(text, query) { 
+     function highlight(text, query) { 
             if (!text || !query) return text; 
             const isExact = document.getElementById('exactMatch').checked;
+            const isWholeWord = document.getElementById('palavraInteira') ? document.getElementById('palavraInteira').checked : false;
             
             let terms = [];
             if (isExact) {
                 terms = [query.trim()].filter(t => t.length > 2);
             } else {
-                // Regex que separa o que está entre aspas do que está solto
                 const regex = /"([^"]+)"|(\S+)/g;
                 let match;
                 while ((match = regex.exec(query)) !== null) {
@@ -424,7 +428,10 @@
             let res = text;
             terms.forEach(term => {
                 const pat = normalizar(term).split('').map(c => ({'a':'[aàáâãä]','e':'[eèéêë]','i':'[iìíîï]','o':'[oòóôõö]','u':'[uùúûü]','c':'[cç]','n':'[nñ]'}[c] || c)).join(''); 
-                res = res.replace(new RegExp(`(${pat})(?![^<]*>)`, 'gi'), '<mark>$1</mark>'); 
+                
+                // MÁGICA AQUI: Se a palavra inteira estiver marcada, usa o limite de borda (\b)
+                let regexStr = isWholeWord ? `\\b(${pat})\\b(?![^<]*>)` : `(${pat})(?![^<]*>)`;
+                res = res.replace(new RegExp(regexStr, 'gi'), '<mark>$1</mark>'); 
             });
             return res;
         }
@@ -432,6 +439,7 @@
        function executeSearch() {
             const queryRaw = document.getElementById('searchInput').value;
             const isExact = document.getElementById('exactMatch').checked;
+            const isWholeWord = document.getElementById('palavraInteira') ? document.getElementById('palavraInteira').checked : false;
             const sortOrder = document.getElementById('sortOrder').value;
             
             let terms = [];
@@ -440,7 +448,6 @@
             } else if (isExact) {
                 terms = [normalizar(queryRaw).trim()];
             } else {
-                // Mágica das aspas: separa os blocos exatos das palavras soltas
                 const regex = /"([^"]+)"|(\S+)/g;
                 let match;
                 while ((match = regex.exec(queryRaw)) !== null) {
@@ -450,15 +457,20 @@
             }
             terms = terms.filter(t => t.length > 0);
 
-            // ---> A MUDANÇA ENTRA EXATAMENTE AQUI <---
-            // Se o filtro da IA estiver ativo (botão roxo), usa só os 15 IDs dela. Senão, usa o banco todo.
             let baseData = window.iaFilterIds ? fullData.filter(d => window.iaFilterIds.includes(d.id)) : fullData;
 
             let textFiltered = baseData.filter(d => {
                 if (terms.length === 0) return true;
                 let searchBody = normalizar(`${d.tribunal} ${d.processo} ${d.ementa}`);
-                // Exige que TODOS os termos (com ou sem aspas) estejam na ementa
-                return terms.every(term => searchBody.includes(term));
+                
+                // MÁGICA AQUI: Filtra de acordo com o botão Palavra Inteira
+                return terms.every(term => {
+                    if (isWholeWord) {
+                        return new RegExp(`\\b${term}\\b`, 'i').test(searchBody);
+                    } else {
+                        return searchBody.includes(term);
+                    }
+                });
             });
           
             let forTribunalCount = textFiltered.filter(d => selectedYears.length === 0 || selectedYears.includes(d.ano));
@@ -499,7 +511,6 @@
 
             document.getElementById('resultsCount').innerText = `${totalResults} RESULTADO(S)`;
             
-            // Controle de exibição do botão Apagar Filtrados
             const btnDeleteFiltered = document.getElementById('btnDeleteFiltered');
             if (btnDeleteFiltered) {
                 if (filteredTotal.length > 0 && filteredTotal.length < fullData.length) {
