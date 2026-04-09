@@ -658,7 +658,6 @@
             try {
                 btnText.innerHTML = '🔍 Extraindo contexto...';
                 
-                // 1. Extrai palavras-chave só para fazer uma peneira inicial rápida
                 const promptKeywords = `Extraia apenas 5 palavras-chave cruciais da pergunta: "${userText}". Retorne APENAS palavras soltas separadas por espaço.`;
                 let keywordsResponse = await callCohereAPI(promptKeywords);
                 
@@ -670,7 +669,6 @@
 
                 btnText.innerHTML = '⚡ Pré-filtrando banco...';
                 
-                // Peneira burra: Pega tudo que tiver pelo menos uma pontuação baixa
                 let scoredData = fullData.map(d => {
                     let score = 0;
                     const searchBody = normalizar(`${d.tribunal} ${d.processo} ${d.ementa}`);
@@ -680,7 +678,6 @@
                     return { item: d, score: score };
                 });
 
-                // Seleciona as 100 melhores na peneira burra
                 let top100 = scoredData.filter(d => d.score > 0).sort((a, b) => b.score - a.score).slice(0, 100).map(d => d.item);
 
                 if (top100.length === 0) {
@@ -692,25 +689,35 @@
                 appendToChat(`🎯 **Análise Semântica (Rerank):**\nEncontrei ${top100.length} decisões com palavras semelhantes. Agora a IA está lendo o **significado** de cada uma para separar apenas as que respondem exatamente ao seu contexto jurídico.`, false);
                 btnText.innerHTML = '🧠 Lendo significados...';
 
-                // 2. A MÁGICA: Manda as 100 decisões para a Cohere ler e ordenar pelo CONTEXTO da pergunta
-                const docTexts = top100.map(d => d.ementa.substring(0, 3000)); // Manda o texto para a IA ler
+                const docTexts = top100.map(d => d.ementa.substring(0, 3000));
                 const rerankResponse = await callCohereRerank(userText, docTexts);
                 
-                // Pega as 15 que a IA classificou como as mais perfeitas para o significado
-                let top15 = rerankResponse.results.map(r => top100[r.index]);
+                // Trava de relevância para o Botão Roxo
+                let topRelevant = rerankResponse.results.filter(r => r.relevance_score > 0.15);
+
+                if (topRelevant.length === 0) {
+                    appendToChat(`Não encontrei jurisprudência no banco com contexto semântico aplicável a este tema.`, false);
+                    btnText.innerHTML = originalBtnHtml;
+                    return;
+                }
+
+                let top15 = topRelevant.slice(0, 15).map(r => top100[r.index]);
 
                 btnText.innerHTML = '✍️ Redigindo resposta...';
                 const contextDecisions = top15.map(d => `[${d.tribunal} - ${d.ano}] Processo: ${d.processo}\nEmenta: ${d.ementa}`).join('\n\n');
                 
+                // PROMPT DO BOTÃO ROXO: Foco na resposta com citações, blindado contra alucinação
                 const finalPrompt = `Você é um auditor de controle externo sênior. Responda à pergunta baseando-se ESTRITA e EXCLUSIVAMENTE nas decisões abaixo. 
                 
-DIRETRIZES OBRIGATÓRIAS:
-1. Sempre que afirmar um entendimento ou citar uma regra, você DEVE inserir a citação exata no final da frase no formato: [Órgão - Processo]. Exemplo: "...conforme entendimento consolidado [TCU - 012.345/2022-11]".
-2. Não invente nenhuma informação, lei ou doutrina que não esteja escrita nas ementas enviadas.
+DIRETRIZES OBRIGATÓRIAS E CRITÉRIOS DE RELEVÂNCIA:
+1. CONTEXTO MATERIAL EXATO: Analise se as decisões fornecidas realmente respondem à pergunta do usuário. Se as decisões tratarem de assuntos materialmente diferentes (ex: a pergunta é sobre escolas e as decisões são sobre rodovias), NÃO force uma resposta baseada em analogias irrelevantes.
+2. PORTA DE SAÍDA: Se as decisões fornecidas não contiverem a resposta para a pergunta de forma pertinente, responda APENAS a exata frase: "Não encontrei jurisprudência no banco atual que responda diretamente a esta questão com o contexto adequado."
+3. CITAÇÃO OBRIGATÓRIA: Se houver contexto válido para responder, sempre que afirmar um entendimento, insira a citação no final da frase no formato: [Órgão - Processo]. Exemplo: "...conforme entendimento consolidado [TCU - 012.345/2022-11]".
+4. ZERO ALUCINAÇÃO: Não invente nenhuma informação, lei ou doutrina que não esteja escrita nas ementas enviadas.
 
 Pergunta: "${userText}"
 
-DECISÕES PARA ANÁLISE:
+DECISÕES PARA ANÁLISE (Filtre e use apenas as pertinentes):
 ${contextDecisions}`;
 
                 const answer = await callCohereAPI(finalPrompt);
@@ -1154,7 +1161,6 @@ ${contextDecisions}`;
             try {
                 btnText.innerHTML = '🔍 Analisando tese...';
                 
-                // 1. Extrai palavras-chave para a peneira rápida (Lexical)
                 const promptKeywords = `Extraia jargões técnicos e palavras-chave do seguinte parágrafo jurídico para usarmos em uma busca preliminar. Retorne APENAS palavras soltas separadas por espaço. Parágrafo: "${userText}"`;
                 let keywordsResponse = await callCohereAPI(promptKeywords);
                 
@@ -1166,7 +1172,6 @@ ${contextDecisions}`;
 
                 btnText.innerHTML = '⚡ Pré-filtrando banco...';
                 
-                // 2. Peneira burra: Separa as 100 que têm alguma palavra em comum
                 let scoredData = fullData.map(d => {
                     let score = 0;
                     const searchBody = normalizar(`${d.tribunal} ${d.processo} ${d.ementa}`);
@@ -1187,26 +1192,39 @@ ${contextDecisions}`;
                 appendToChat(`🎯 **Análise Semântica (Rerank):**\nPré-selecionei ${top100.length} decisões. Agora a IA está analisando o **sentido** do seu texto para encontrar a jurisprudência que se encaixa com perfeição na sua tese.`, false);
                 btnText.innerHTML = '🧠 Lendo significados...';
 
-                // 3. A MÁGICA SEMÂNTICA: A Cohere lê o seu texto e reordena as 100 decisões pelo contexto!
                 const docTexts = top100.map(d => d.ementa.substring(0, 3000));
                 const rerankResponse = await callCohereRerank(userText, docTexts);
                 
-                // Pega as 15 que melhor fundamentam a tese
-                let top15 = rerankResponse.results.map(r => top100[r.index]);
+                // Trava de relevância rigorosa para o Botão Verde
+                let topRelevant = rerankResponse.results.filter(r => r.relevance_score > 0.15);
+
+                if (topRelevant.length === 0) {
+                    appendToChat(`Não encontrei nenhuma jurisprudência no banco com contexto semântico aplicável para fundamentar este tema. (O seu banco atual carece de decisões sobre este assunto específico).`, false);
+                    btnText.innerHTML = originalBtnHtml;
+                    return;
+                }
+
+                let top15 = topRelevant.slice(0, 15).map(r => top100[r.index]);
 
                 btnText.innerHTML = '✍️ Selecionando citações...';
                 const contextDecisions = top15.map(d => `[${d.tribunal} - ${d.processo}]\nEmenta: ${d.ementa}`).join('\n\n');
                 
-                // 4. PROMPT REVERSO: Exige que a IA apenas devolva as 3 melhores citações para você colar no Word
-                const finalPrompt = `Atue como um assistente de formatação jurídica.
-O auditor escreveu o seguinte trecho em seu relatório: "${userText}"
+                // PROMPT DO BOTÃO VERDE: Filtro de Excelência, liberdade numérica e descarte de lixo
+                const finalPrompt = `Atue como um auditor de controle externo sênior e assistente de formatação jurídica.
+O auditor escreveu o seguinte trecho em seu relatório/parecer: "${userText}"
 
-Sua tarefa: Analise as decisões abaixo e selecione APENAS as 3 decisões que melhor servem de fundamentação legal para o texto do auditor. 
-Retorne EXATAMENTE no seguinte formato para cada uma:
+Sua tarefa: Analise as decisões fornecidas e SELECIONE APENAS AS DECISÕES que servem de fundamentação legal EXATA (ou analogia direta e inquestionável) para o texto do auditor.
+
+⚠️ REGRAS DE FILTRAGEM (CRITÉRIO RIGOROSO):
+1. EXCELÊNCIA ACIMA DE QUANTIDADE: Não há limite de número. Você pode retornar 1, 5, 10 ou quantas decisões forem realmente pertinentes. No entanto, você deve DESCARTAR IMPIEDOSAMENTE qualquer decisão que seja apenas "vagamente" relacionada.
+2. CONTEXTO MATERIAL: Se as decisões tratarem de objetos materialmente diferentes da tese do auditor (ex: o texto fala de escolas e a decisão fala de rodovias, asfalto, etc.), REJEITE A DECISÃO sumariamente. Não force analogias.
+3. PORTA DE SAÍDA: Se após aplicar seu filtro rigoroso não sobrar NENHUMA decisão válida, responda APENAS a exata frase: "Nenhuma decisão no banco atual possui contexto semântico perfeitamente aplicável para fundamentar este trecho."
+4. ZERO EXPLICAÇÕES: Não crie introduções, não justifique suas escolhas e não faça conclusões.
+
+Se encontrar decisões válidas, use EXATAMENTE este formato para listá-las:
+
 **[Órgão - Processo]**
 > "Cole o trecho exato e mais relevante da ementa aqui..."
-
-NÃO explique. NÃO crie texto novo. Apenas liste as citações perfeitas para colar na peça.
 
 DECISÕES PARA ANÁLISE:
 ${contextDecisions}`;
