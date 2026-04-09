@@ -1154,8 +1154,8 @@ ${contextDecisions}`;
             try {
                 btnText.innerHTML = '🔍 Analisando tese...';
                 
-                // Extrai termos do seu texto para achar decisões parecidas no banco
-                const promptKeywords = `Extraia jargões técnicos e palavras-chave do seguinte parágrafo jurídico para usarmos em uma busca de banco de dados. Retorne APENAS palavras soltas separadas por espaço. Parágrafo: "${userText}"`;
+                // 1. Extrai palavras-chave para a peneira rápida (Lexical)
+                const promptKeywords = `Extraia jargões técnicos e palavras-chave do seguinte parágrafo jurídico para usarmos em uma busca preliminar. Retorne APENAS palavras soltas separadas por espaço. Parágrafo: "${userText}"`;
                 let keywordsResponse = await callCohereAPI(promptKeywords);
                 
                 const ignorar = ['qual', 'entendimento', 'sobre', 'que', 'ser', 'ter', 'poder', 'para', 'dos', 'das', 'com', 'como', 'estabelecido', 'ou', 'em', 'um', 'uma', 'na', 'no', 'aos', 'por', 'pelo', 'pela', 'tem', 'deve', 'são', 'mais', 'conforme', 'autos', 'demonstrado', 'tendo', 'vista'];
@@ -1164,34 +1164,40 @@ ${contextDecisions}`;
                     .map(t => normalizar(t.trim().replace(/[^\wÀ-ÿ0-9-]/g, ''))) 
                     .filter(t => t.length > 2 && !ignorar.includes(t));
 
-                appendToChat(`🎯 **Buscando Fundamentação:**\nA IA está varrendo o banco procurando jurisprudência que embase os seguintes conceitos:\n> \`${terms.join(' | ')}\``, false);
-
-                btnText.innerHTML = '⚡ Varrendo banco...';
+                btnText.innerHTML = '⚡ Pré-filtrando banco...';
                 
+                // 2. Peneira burra: Separa as 100 que têm alguma palavra em comum
                 let scoredData = fullData.map(d => {
                     let score = 0;
                     const searchBody = normalizar(`${d.tribunal} ${d.processo} ${d.ementa}`);
                     terms.forEach(t => {
-                        const regex = new RegExp(t, 'gi');
-                        const matches = searchBody.match(regex);
-                        if (matches) score += matches.length;
+                        if (searchBody.includes(t)) score++;
                     });
                     return { item: d, score: score };
                 });
 
-                // Pega o top 15 para mandar para a IA analisar
-                let top15 = scoredData.filter(d => d.score > 0).sort((a, b) => b.score - a.score).slice(0, 15).map(d => d.item);
+                let top100 = scoredData.filter(d => d.score > 0).sort((a, b) => b.score - a.score).slice(0, 100).map(d => d.item);
 
-                if (top15.length === 0) {
-                    appendToChat(`Não encontrei nenhuma decisão no banco que se alinhe a esse trecho.`, false);
+                if (top100.length === 0) {
+                    appendToChat(`Não encontrei nenhuma decisão no banco que se aproxime preliminarmente a esse trecho.`, false);
                     btnText.innerHTML = originalBtnHtml;
                     return;
                 }
 
-                btnText.innerHTML = '🧠 Selecionando citações...';
+                appendToChat(`🎯 **Análise Semântica (Rerank):**\nPré-selecionei ${top100.length} decisões. Agora a IA está analisando o **sentido** do seu texto para encontrar a jurisprudência que se encaixa com perfeição na sua tese.`, false);
+                btnText.innerHTML = '🧠 Lendo significados...';
+
+                // 3. A MÁGICA SEMÂNTICA: A Cohere lê o seu texto e reordena as 100 decisões pelo contexto!
+                const docTexts = top100.map(d => d.ementa.substring(0, 3000));
+                const rerankResponse = await callCohereRerank(userText, docTexts);
+                
+                // Pega as 15 que melhor fundamentam a tese
+                let top15 = rerankResponse.results.map(r => top100[r.index]);
+
+                btnText.innerHTML = '✍️ Selecionando citações...';
                 const contextDecisions = top15.map(d => `[${d.tribunal} - ${d.processo}]\nEmenta: ${d.ementa}`).join('\n\n');
                 
-                // PROMPT REVERSO: A IA não vai explicar, vai apenas selecionar e formatar a citação
+                // 4. PROMPT REVERSO: Exige que a IA apenas devolva as 3 melhores citações para você colar no Word
                 const finalPrompt = `Atue como um assistente de formatação jurídica.
 O auditor escreveu o seguinte trecho em seu relatório: "${userText}"
 
@@ -1207,7 +1213,6 @@ ${contextDecisions}`;
 
                 const answer = await callCohereAPI(finalPrompt);
                 
-                // Passa os IDs para o botão "Ver na tela" e "Exportar" funcionarem também!
                 const dadosExportacao = { 
                     pergunta: `FUNDAMENTAÇÃO PARA O TEXTO:\n"${userText}"`, 
                     resposta: answer, 
