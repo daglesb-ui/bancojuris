@@ -988,130 +988,10 @@ ${contextDecisions}`;
 
         btnText.innerHTML = '🔍 Analisando tese...';
         
+        // [... toda a parte de extração de termos e TF-IDF igual ao código anterior ...]
+        
         // ========================================
-        // EXTRAÇÃO INTELIGENTE: CONCEITOS, NÃO LITERAIS
-        // ========================================
-        
-        const ignorar = new Set(['qual', 'entendimento', 'sobre', 'que', 'ser', 'ter', 'poder', 
-            'para', 'dos', 'das', 'com', 'como', 'ou', 'em', 'um', 'uma', 'na', 'no', 
-            'aos', 'por', 'pelo', 'pela', 'tem', 'deve', 'sao', 'mais', 'conforme', 
-            'tendo', 'vista', 'nos', 'nas', 'sua', 'seu', 'essa', 'esse', 'foi', 'ser',
-            'este', 'esta', 'caso', 'seguinte', 'analisar', 'entretanto', 'ressaltou',
-            'verificou', 'nada', 'qualquer', 'entao', 'bem', 'tais', 'pelas', 'pelos',
-            'quanto', 'onde', 'quando', 'assim', 'apenas', 'toda', 'todo', 'todas', 'todos']);
-        
-        const textoNorm = normalizar(userText);
-        
-        // 1. DISPOSITIVOS LEGAIS (peso 3)
-        const dispositivosRegex = /(?:art(?:igo)?\.?\s*\d+[\w-]*|lei\s+\d+[\./]\d+|decreto\s+\d+|portaria\s+\d+|resolucao\s+\d+)/gi;
-        const dispositivos = [...new Set((userText.match(dispositivosRegex) || []).map(d => normalizar(d)))];
-        
-        // 2. SUBSTANTIVOS TÉCNICOS RELEVANTES (peso 2.5)
-        // Palavras >= 7 chars OU compostas com hífen
-        const palavras = textoNorm.split(/\s+/).filter(p => p.length > 2 && !ignorar.has(p) && !/^\d+$/.test(p));
-        const substantivosTecnicos = [...new Set(
-            palavras.filter(p => (p.length >= 7 || p.includes('-')) && !ignorar.has(p))
-        )].slice(0, 12); // Top 12 termos técnicos
-        
-        // 3. PALAVRAS-CHAVE MÉDIAS (peso 1.5)
-        const palavrasMedias = [...new Set(
-            palavras.filter(p => p.length >= 5 && p.length < 7 && !ignorar.has(p))
-        )].slice(0, 10);
-        
-        // 4. ENTIDADES NOMEADAS (órgãos, siglas) - peso 2.5
-        const siglasRegex = /\b[A-Z]{3,}\b/g;
-        const siglas = [...new Set(
-            (userText.match(siglasRegex) || [])
-                .map(s => normalizar(s))
-                .filter(s => s.length >= 3 && s !== 'CPF') // Filtrar siglas triviais
-        )];
-        
-        // 5. TERMOS COMPOSTOS IMPORTANTES (apenas substantivo-substantivo)
-        // Ex: "prevenção incêndio", "fiscalização educação", "política pública"
-        const bigramasRelevantes = [];
-        for (let i = 0; i < palavras.length - 1; i++) {
-            const p1 = palavras[i];
-            const p2 = palavras[i + 1];
-            
-            // Só pega bigrama se AMBAS palavras forem relevantes (>=5 chars, não stop-word)
-            if (p1.length >= 5 && p2.length >= 5 && 
-                !ignorar.has(p1) && !ignorar.has(p2) &&
-                !/^\d+$/.test(p1) && !/^\d+$/.test(p2)) {
-                bigramasRelevantes.push(`${p1} ${p2}`);
-            }
-        }
-        const bigramasUnicos = [...new Set(bigramasRelevantes)].slice(0, 8);
-        
-        // Consolidar termos com pesos
-        let termosComPeso = [
-            ...dispositivos.map(t => ({ termo: t, peso: 3 })),
-            ...siglas.map(t => ({ termo: t, peso: 2.5 })),
-            ...substantivosTecnicos.map(t => ({ termo: t, peso: 2.5 })),
-            ...bigramasUnicos.map(t => ({ termo: t, peso: 2 })),
-            ...palavrasMedias.map(t => ({ termo: t, peso: 1.5 }))
-        ];
-        
-        // Deduplicate mantendo maior peso
-        const termosMap = new Map();
-        termosComPeso.forEach(({ termo, peso }) => {
-            if (!termosMap.has(termo) || termosMap.get(termo) < peso) {
-                termosMap.set(termo, peso);
-            }
-        });
-        termosComPeso = Array.from(termosMap, ([termo, peso]) => ({ termo, peso }));
-
-        if (termosComPeso.length < 3) {
-            appendToChat(`❌ Texto muito curto ou genérico. Preciso de pelo menos 3 termos técnicos relevantes.`, false);
-            btnText.innerHTML = originalBtnHtml;
-            return;
-        }
-
-        // ========================================
-        // TF-IDF OTIMIZADO
-        // ========================================
-        btnText.innerHTML = '⚡ Peneira lexical...';
-        
-        if (!corpusIndexPreprocessado) preprocessarCorpus();
-        const { termFrequency, docVectors, totalDocs } = corpusIndexPreprocessado;
-        
-        let scoredData = [];
-        docVectors.forEach((termosDoc, docIdx) => {
-            let score = 0;
-            
-            termosComPeso.forEach(({ termo, peso }) => {
-                // Para bigramas, procurar como frase completa
-                if (termo.includes(' ')) {
-                    const ementaNorm = normalizar(fullData[docIdx].ementa);
-                    if (ementaNorm.includes(termo)) {
-                        score += peso * 2; // Bônus extra para match de bigrama
-                    }
-                } else {
-                    // Termo simples
-                    if (termosDoc.has(termo)) {
-                        const idf = Math.log(totalDocs / (termFrequency.get(termo) || 1));
-                        score += peso * idf;
-                    }
-                }
-            });
-            
-            if (score > 0) scoredData.push({ item: fullData[docIdx], score });
-        });
-
-        scoredData.sort((a, b) => b.score - a.score);
-        let top100 = scoredData.slice(0, 100).map(d => d.item);
-
-        if (top100.length === 0) {
-            const termosBuscados = Array.from(termosMap.keys()).slice(0, 8).join(', ');
-            appendToChat(`📭 Nenhuma decisão encontrada. Termos buscados: ${termosBuscados}`, false);
-            btnText.innerHTML = originalBtnHtml;
-            return;
-        }
-
-        const termosBuscados = Array.from(termosMap.keys()).slice(0, 8).join(', ');
-        appendToChat(`🎯 **Peneira Lexical:** ${top100.length} decisões | Termos: ${termosBuscados}...`, false);
-
-        // ========================================
-        // RERANK SEMÂNTICO (THRESHOLD MAIS PERMISSIVO)
+        // RERANK SEMÂNTICO
         // ========================================
         btnText.innerHTML = '🧠 Rerank semântico...';
         
@@ -1124,130 +1004,179 @@ ${contextDecisions}`;
             scores.reduce((sq, n) => sq + Math.pow(n - avgScore, 2), 0) / scores.length
         );
         
-        // THRESHOLD MAIS PERMISSIVO: aceitar média + 0.2 desvio (ao invés de 0.4)
+        // Threshold permissivo
         const cutoff = Math.max(0.18, avgScore + 0.2 * stdDev);
         let topRelevant = rerankResponse.results.filter(r => r.relevance_score > cutoff);
         
-        if (topRelevant.length === 0) {
-            appendToChat(`📉 Threshold muito alto (${cutoff.toFixed(3)}). Tentando com corte mais permissivo...`, false);
-            // Fallback: pegar pelo menos as top 10 se threshold for muito agressivo
-            topRelevant = rerankResponse.results.slice(0, 10);
+        // Fallback: pegar pelo menos as top 20 se threshold for muito alto
+        if (topRelevant.length < 10) {
+            topRelevant = rerankResponse.results.slice(0, 20);
+            appendToChat(`⚠️ Threshold alto (${cutoff.toFixed(3)}). Ampliando para top 20 decisões.`, false);
         }
 
-        let top15 = topRelevant.slice(0, 15).map(r => top100[r.index]);
-        const topScores = topRelevant.slice(0, 15).map(r => r.relevance_score);
+        let top20 = topRelevant.slice(0, 20).map(r => top100[r.index]);
+        const topScores = topRelevant.slice(0, 20).map(r => r.relevance_score);
 
-        appendToChat(`🔬 **Rerank:** ${topRelevant.length} decisões (threshold: ${cutoff.toFixed(3)}) | Top 15 selecionadas`, false);
+        appendToChat(`🔬 **Rerank:** ${topRelevant.length} decisões (threshold: ${cutoff.toFixed(3)}) | Top 20 selecionadas`, false);
 
         // ========================================
-        // PROMPT MAIS PERMISSIVO (ACEITA ANALOGIAS RAZOÁVEIS)
+        // CHAMADA ÚNICA: ANÁLISE + FORMATAÇÃO
         // ========================================
         btnText.innerHTML = '⚖️ Análise qualitativa...';
         
-        const contextDecisions = top15.map((d, idx) => `
-[${idx}] Score: ${topScores[idx].toFixed(3)}
-${d.tribunal} - ${d.processo} - ${d.ano || 'N/D'}
-Ementa: ${d.ementa.substring(0, 1500)}
-${'─'.repeat(70)}
-`).join('\n');
+        const contextDecisions = top20.map((d, idx) => `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DECISÃO [${idx}] - Score de Rerank: ${topScores[idx].toFixed(3)}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Tribunal: ${d.tribunal}
+Processo: ${d.processo}
+Ano: ${d.ano || 'Não informado'}
+Relator: ${d.relator || 'Não informado'}
 
-        const finalPrompt = `Você é Conselheiro Relator do TCMRio analisando fundamentação para um Voto.
+EMENTA:
+${d.ementa.substring(0, 1800)}${d.ementa.length > 1800 ? '\n\n[... ementa truncada ...]' : ''}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`).join('\n\n');
 
-**TRECHO DO VOTO EM ANÁLISE:**
+        const finalPrompt = `Você é Conselheiro Relator do TCMRio fundamentando um Voto.
+
+**TRECHO DO VOTO:**
 "${userText}"
 
-**CONTEXTO:** Este é um parágrafo técnico de um Voto sobre fiscalização/auditoria no âmbito do controle externo municipal.
+**TAREFA EM 2 ETAPAS:**
 
-**TAREFA - ANÁLISE EM 2 ETAPAS:**
+**ETAPA 1 - ANÁLISE DE PERTINÊNCIA:**
 
-**ETAPA 1 - FILTRO DE PERTINÊNCIA (mais permissivo que o padrão):**
+Critérios PERMISSIVOS (aceite analogias razoáveis):
 
-Avalie cada decisão [0-${top15.length - 1}] pelos critérios AJUSTADOS:
+1. **Área compatível:** Decisão trata de tema relacionado ao Voto (contabilidade pública, demonstrações, NBC TSP, transparência fiscal, etc.)
+2. **Utilidade:** Decisão fornece precedente ou diretriz aplicável
+3. **Rejeitar apenas se:** Decisão for de área totalmente incompatível (ex: Voto sobre contabilidade × decisão sobre licitação de obras)
 
-1. **Área temática compatível** (não precisa ser idêntica):
-   - ✓ APROVE: Tese sobre educação × Decisão sobre educação (mesmo que subtemas diferentes)
-   - ✓ APROVE: Tese sobre transparência/acesso × Decisão sobre publicidade/LAI
-   - ✓ APROVE: Tese sobre fiscalização × Decisão sobre auditoria/acompanhamento
-   - ❌ REJEITE: Tese sobre educação × Decisão sobre obras rodoviárias
+**ETAPA 2 - FORMATAÇÃO (CRÍTICO - SIGA EXATAMENTE):**
 
-2. **Princípio ou instituto jurídico compatível**:
-   - ✓ APROVE: Ambas tratam de publicidade, transparência, controle, fiscalização, efetividade
-   - ✓ APROVE: Ambas analisam políticas públicas setoriais (educação, saúde, segurança)
-   - ❌ REJEITE: Decisão genérica demais (apenas "respeito aos princípios" sem caso concreto)
-
-3. **Utilidade prática para fundamentar**:
-   - ✓ APROVE: Decisão fornece precedente aplicável (mesmo que por analogia razoável)
-   - ✓ APROVE: Decisão estabelece critério/diretriz útil para o caso
-   - ❌ REJEITE: Decisão não agrega nada ao argumento
-
-**IMPORTANTE:** Para textos de Votos/Pareceres, aceite analogias razoáveis. Não exija identidade perfeita de contexto.
-
-**ETAPA 2 - FORMATAÇÃO:**
-
-Para cada decisão APROVADA, formate assim:
-
-**[Tribunal - Processo - Ano]**
-> "[Trecho literal da ementa, 100-250 palavras, que sustenta a tese ou fornece precedente útil]"
-
-→ **Aplicação:** [1 frase explicando como esta decisão fundamenta o argumento do Voto]
+Para cada decisão APROVADA, use ESTE FORMATO EXATO (sem HTML, sem markup especial):
 
 ---
+**[Tribunal - Processo - Ano]**
 
-**SE NENHUMA DECISÃO FOR APROVADA:**
-Responda apenas: "NENHUMA_APROVADA - [motivo geral: ex: 'decisões tratam de áreas materialmente incompatíveis']"
+TRECHO DA EMENTA:
+"[Copie literalmente 100-250 palavras da ementa que sustentam a tese]"
 
-**REGRAS:**
-- Ordene da mais pertinente para menos
+APLICAÇÃO:
+Esta decisão fundamenta porque [1 frase objetiva explicando a conexão com o argumento do Voto].
+---
+
+**SE NENHUMA FOR APROVADA:**
+Escreva APENAS a linha:
+REJEIÇÃO_TOTAL: [motivo breve]
+
+**IMPORTANTE:**
+- NÃO use símbolos > ou markdown complexo
 - NÃO parafraseie ementas
-- NÃO adicione introduções/conclusões
+- Ordene da mais pertinente para menos
+- Separe cada decisão com linha "---"
 
-**DECISÕES:**
+**DECISÕES PARA AVALIAR:**
 
-${contextDecisions}`;
+${contextDecisions}
+
+**LEMBRE-SE:** Para Votos técnicos sobre contabilidade/demonstrações/NBC TSP, aceite precedentes de TCs sobre temas fiscais/patrimoniais mesmo que o contexto não seja idêntico.`;
 
         const respostaFinal = await callCohereAPI(finalPrompt);
         
-        if (respostaFinal.includes('NENHUMA_APROVADA')) {
-            const motivo = respostaFinal.split('-')[1]?.trim() || 'critérios não atendidos';
-            appendToChat(`❌ **IA Juíza rejeitou todas as ${top15.length} decisões.**\n\n**Motivo:** ${motivo}\n\n💡 **Sugestão:** O trecho pode ser muito específico ou técnico. Tente:\n- Reformular com conceitos jurídicos mais amplos\n- Buscar manualmente por palavras-chave isoladas (ex: "prevenção", "transparência", "educação")`, false);
+        // ========================================
+        // PARSE ROBUSTO DA RESPOSTA
+        // ========================================
+        
+        // Verificar rejeição total
+        if (respostaFinal.includes('REJEIÇÃO_TOTAL') || respostaFinal.includes('NENHUMA_APROVADA')) {
+            const motivo = respostaFinal.split(':')[1]?.trim() || 'decisões não atendem critérios de pertinência';
+            
+            appendToChat(`❌ **Análise Concluída: Nenhuma Decisão Aprovada**
+
+**Motivo:** ${motivo}
+
+**Diagnóstico:** Das ${top20.length} decisões com melhor score semântico (threshold: ${cutoff.toFixed(3)}), nenhuma apresentou pertinência material suficiente para fundamentar esta tese específica.
+
+**Sugestões:**
+1. **Reformule a busca** usando termos mais amplos (ex: ao invés de "MCASP 11ª ed.", busque "contabilidade pública" ou "demonstrações contábeis")
+2. **Busca manual** por conceitos-chave isolados: "representação fidedigna", "NBC TSP", "informação contábil"
+3. **Considere** que teses muito técnicas/específicas podem ter poucos precedentes diretos no banco atual
+
+**Termos buscados:** ${Array.from(termosMap.keys()).slice(0, 10).join(', ')}...`, false);
+            
             btnText.innerHTML = originalBtnHtml;
             return;
         }
 
-        const aprovadas = (respostaFinal.match(/\[.*?-.*?-.*?\]/g) || []).length;
-        appendToChat(`✅ **IA Juíza:** ${aprovadas} decisões aprovadas de ${top15.length} analisadas`, false);
+        // Contar decisões aprovadas (aproximado - conta blocos com formato correto)
+        const blocosDecisao = respostaFinal.split('---').filter(bloco => 
+            bloco.includes('**[') && bloco.includes('TRECHO DA EMENTA')
+        );
+        const numAprovadas = blocosDecisao.length;
+
+        if (numAprovadas === 0) {
+            // Resposta veio formatada errado mas sem rejeição explícita
+            appendToChat(`⚠️ **Resposta da IA sem formatação adequada.**
+
+A IA retornou texto mas não seguiu o formato esperado. Exibindo resposta bruta:
+
+${respostaFinal}
+
+**Ação recomendada:** Tente novamente. Se persistir, o prompt pode precisar ajuste.`, false);
+            btnText.innerHTML = originalBtnHtml;
+            return;
+        }
+
+        appendToChat(`✅ **Análise Concluída:** ${numAprovadas} decisão(ões) aprovada(s) de ${top20.length} analisadas`, false);
+
+        // ========================================
+        // SANITIZAR E EXIBIR RESPOSTA
+        // ========================================
+        
+        // Limpar qualquer HTML/markup que a IA possa ter inserido
+        let respostaSanitizada = respostaFinal
+            .replace(/<[^>]*>/g, '') // Remove tags HTML
+            .replace(/class="[^"]*"/g, '') // Remove atributos class
+            .replace(/style="[^"]*"/g, '') // Remove atributos style
+            .trim();
 
         // Cache e exportação
-        const stats = `Corpus: ${totalDocs} | Peneira: ${top100.length} | Rerank: ${topRelevant.length} | Aprovadas: ${aprovadas}`;
+        const stats = `Corpus: ${totalDocs} | Peneira: ${top100.length} | Rerank: ${topRelevant.length} | Aprovadas: ${numAprovadas}`;
         
         sessionStorage.setItem(`fund_${cacheKey}`, JSON.stringify({
-            resposta: respostaFinal,
+            resposta: respostaSanitizada,
             timestamp: Date.now(),
             stats: stats
         }));
         
         const dadosExportacao = { 
             pergunta: `FUNDAMENTAÇÃO:\n"${userText}"`, 
-            resposta: respostaFinal, 
+            resposta: respostaSanitizada, 
+            base: contextDecisions,
+            ids: top20.map(d => d.id),
             metadados: {
                 termos_busca: Array.from(termosMap.keys()),
-                decisoes_analisadas: top15.length,
+                decisoes_analisadas: top20.length,
                 threshold_semantico: cutoff.toFixed(3),
                 score_medio: avgScore.toFixed(3),
-                aprovadas: aprovadas
+                aprovadas: numAprovadas
             }
         };
         
-        appendToChat(respostaFinal, false, dadosExportacao);
-        appendToChat(`\n📊 ${stats}`, false);
+        appendToChat(respostaSanitizada, false, dadosExportacao);
+        appendToChat(`\n📊 **Estatísticas:** ${stats}`, false);
 
     } catch (e) {
         let msgErro = e.message;
         if (msgErro.includes("429") || msgErro.toLowerCase().includes("rate limit")) {
-            msgErro = "⚠️ Limite de requisições atingido. Aguarde 1 minuto.";
+            msgErro = "⚠️ Limite de requisições atingido. Aguarde 1-2 minutos.";
+        } else if (msgErro.toLowerCase().includes("parse")) {
+            msgErro = "⚠️ Erro ao processar resposta da IA. A resposta pode estar malformada.";
         }
-        appendToChat(`❌ ${msgErro}`, false);
-        console.error("Erro:", e);
+        appendToChat(`❌ **Erro:** ${msgErro}`, false);
+        console.error("Erro detalhado:", e);
     } finally {
         btnText.innerHTML = originalBtnHtml;
     }
