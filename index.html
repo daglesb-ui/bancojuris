@@ -521,10 +521,10 @@
                 return true;
             });
 
-            lastFilteredData = filteredTotal;
+           lastFilteredData = filteredTotal;
 
-            filteredTotal.sort((a, b) => {
-                if (sortOrder === 'relevance' && query.length > 0) {
+            // SEÇÃO DE ORDENAÇÃO
+            if (sortOrder === 'relevance' && queryRaw.trim().length > 0) {
                 if (!corpusIndexPreprocessado) preprocessarCorpus(); // Fallback de segurança
                 
                 const ignorar = new Set(['qual', 'entendimento', 'sobre', 'que', 'ser', 'ter', 
@@ -532,7 +532,7 @@
                     'na', 'no', 'aos', 'por', 'pelo', 'pela', 'tem', 'deve', 'são', 'mais', 
                     'conforme', 'tendo', 'vista', 'nos', 'nas', 'foi', 'essa', 'esse']);
                 
-                const queryNormalizada = normalizar(query);
+                const queryNormalizada = normalizar(queryRaw);
                 const termosQuery = queryNormalizada.split(/\s+/).filter(t => t.length > 2 && !ignorar.has(t));
                 
                 if (termosQuery.length > 0) {
@@ -565,6 +565,8 @@
                     return 0;
                 });
             }
+
+            const totalResults = filteredTotal.length;
 
             const totalResults = filteredTotal.length;
             const totalPages = Math.ceil(totalResults / pageSize);
