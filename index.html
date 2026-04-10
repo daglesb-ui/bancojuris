@@ -802,15 +802,27 @@
         }
 
     function copiarPromptMagico() {
-            const texto = `Atue como um especialista em indexação de jurisprudência. Vou te fornecer um trecho do meu relatório. Extraia os termos para minha ferramenta de busca.
-Retorne EXATAMENTE neste formato (apenas palavras soltas separadas por vírgula):
+            const texto = `Atue como um especialista em indexação de jurisprudência de Tribunais de Contas. Vou te fornecer um trecho de um relatório de auditoria.
 
-TESE_PRINCIPAL: [A infração ou tese central em 2 a 4 palavras]
-SINONIMOS: [3 a 5 palavras que são sinônimos da tese principal]
-ACESSORIOS: [2 a 4 palavras que dão o cenário/contexto da infração]
+Sua tarefa é extrair os termos de busca perfeitos para encontrarmos Acórdãos que fundamentem esse exato achado/irregularidade.
+
+REGRAS DE EXTRAÇÃO:
+
+TESE_PRINCIPAL: Qual é a irregularidade ou infração central? (Use de 2 a 4 palavras-chave).
+
+SINONIMOS: Liste 3 a 5 expressões ou palavras técnicas que outros auditores ou juízes usariam para descrever essa mesma infração.
+
+ACESSORIOS: Liste 2 a 4 palavras que dão o contexto material do problema (área, objeto, tipo de documento), ignorando nomes próprios, números de leis ou siglas muito específicas.
+
+REGRA DE FORMATAÇÃO (CRÍTICA):
+Retorne APENAS o bloco de texto abaixo. Não inclua saudações, explicações, aspas ou formatação markdown (como negrito). Separe os termos por vírgula.
+
+TESE_PRINCIPAL: [termos]
+SINONIMOS: [termos]
+ACESSORIOS: [termos]
 
 TEXTO DO RELATÓRIO:
-[COLE SEU TEXTO AQUI]`;
+"[COLE O TRECHO AQUI]"`;
             
             navigator.clipboard.writeText(texto).then(() => {
                 showToast('📋 Prompt copiado! Cole no ChatGPT ou Claude.');
