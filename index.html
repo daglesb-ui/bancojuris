@@ -802,27 +802,49 @@
         }
 
     function copiarPromptMagico() {
-            const texto = `Atue como um especialista em indexação de jurisprudência de Tribunais de Contas. Vou te fornecer um trecho de um relatório de auditoria.
+            const texto = `FOCO DA ANÁLISE:
+[ESCREVA SEU FOCO AQUI. Ex: Baixa efetividade da política pública]
 
-Sua tarefa é extrair os termos de busca perfeitos para encontrarmos Acórdãos que fundamentem esse exato achado/irregularidade.
+TEXTO DO RELATÓRIO:
+"[COLE O TRECHO DO RELATÓRIO AQUI]"
+
+INSTRUÇÕES PARA A IA:
+Atue como um especialista em indexação de jurisprudência de Tribunais de Contas. Analise o texto acima sob a lente do foco indicado.
+Sua tarefa é extrair os termos de busca mais eficazes para localizar Acórdãos que fundamentem exatamente o achado descrito.
 
 REGRAS DE EXTRAÇÃO:
 
-TESE_PRINCIPAL: Qual é a irregularidade ou infração central? (Use de 2 a 4 palavras-chave).
+TESE_PRINCIPAL: Identifique a irregularidade central em 2 a 4 palavras-chave.
 
-SINONIMOS: Liste 3 a 5 expressões ou palavras técnicas que outros auditores ou juízes usariam para descrever essa mesma infração.
+SINONIMOS: Liste 3 a 5 expressões técnicas equivalentes utilizadas em decisões de Tribunais de Contas.
 
-ACESSORIOS: Liste 2 a 4 palavras que dão o contexto material do problema (área, objeto, tipo de documento), ignorando nomes próprios, números de leis ou siglas muito específicas.
+ACESSORIOS: Liste 2 a 4 termos que contextualizam materialmente o caso.
 
-REGRA DE FORMATAÇÃO (CRÍTICA):
-Retorne APENAS o bloco de texto abaixo. Não inclua saudações, explicações, aspas ou formatação markdown (como negrito). Separe os termos por vírgula.
+REGRA DE FOCO (CRÍTICA E OBRIGATÓRIA):
+A TESE deve refletir EXATAMENTE o Foco da Análise indicado no início, mesmo que existam outras irregularidades mais evidentes no texto.
+
+REGRA DE PRIORIDADE:
+Quando houver múltiplas possíveis irregularidades:
+
+Priorize a que foi indicada explicitamente no Foco;
+
+Ignore as demais, ainda que juridicamente mais comuns.
+
+REGRA DE EXCLUSÃO:
+É proibido escolher uma tese alternativa apenas por ser mais frequente na jurisprudência ou mais evidente no texto.
+
+REGRA DE ADERÊNCIA:
+Antes de responder, valide internamente: "A tese que escolhi corresponde diretamente ao Foco da Análise solicitado?". Se não, reescreva.
+
+REGRA DE PRECISÃO:
+Evite generalizações ou mudança de nível analítico (ex: sair do concreto para o abstrato) sem solicitação explícita.
+
+REGRA DE FORMATAÇÃO (OBRIGATÓRIA):
+Retorne EXATAMENTE no formato abaixo, sem qualquer explicação adicional. Separe os termos por vírgula.
 
 TESE_PRINCIPAL: [termos]
 SINONIMOS: [termos]
-ACESSORIOS: [termos]
-
-TEXTO DO RELATÓRIO:
-"[COLE O TRECHO AQUI]"`;
+ACESSORIOS: [termos]`;
             
             navigator.clipboard.writeText(texto).then(() => {
                 showToast('📋 Prompt copiado! Cole no ChatGPT ou Claude.');
