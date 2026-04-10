@@ -810,17 +810,20 @@
                 
                 const ignorar = new Set(['qual', 'entendimento', 'sobre', 'que', 'ser', 'ter', 'poder', 
                     'para', 'dos', 'das', 'com', 'como', 'ou', 'em', 'um', 'uma', 'na', 'no', 
-                    'aos', 'por', 'pelo', 'pela', 'tem', 'deve', 'são', 'mais', 'conforme', 
-                    'tendo', 'vista', 'nos', 'nas', 'sua', 'seu', 'essa', 'esse', 'foi', 'ser']);
+                    'aos', 'por', 'pelo', 'pela', 'tem', 'deve', 'sao', 'mais', 'conforme', 
+                    'tendo', 'vista', 'nos', 'nas', 'sua', 'seu', 'essa', 'esse', 'foi', 'ser',
+                    'este', 'esta', 'caso', 'seguinte', 'analisar', 'entretanto', 'ressaltou',
+                    'verificou', 'nada', 'qualquer', 'entao', 'bem', 'tais', 'pelas', 'pelos']);
                 
-                const textoNorm = normalizar(userText);
+                // MÁGICA DE LIMPEZA: Remove pontuação e vírgulas para não poluir o TF-IDF
+                const textoLimpo = userText.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9-]/g, ' ').replace(/\s+/g, ' ').trim();
                 
                 const dispositivosRegex = /(?:art(?:igo)?\.?\s*\d+[\w-]*|lei\s+\d+[\./]\d+|decreto\s+\d+|portaria\s+\d+)/gi;
                 const dispositivos = [...new Set((userText.match(dispositivosRegex) || []).map(d => normalizar(d)))];
                 
-                const palavras = textoNorm.split(/\s+/);
-                const termosPergunta = [...new Set(palavras.filter(p => p.length >= 6 && !ignorar.has(p) && !/^\d+$/.test(p)))].slice(0, 10);
-                const palavrasMedias = [...new Set(palavras.filter(p => p.length >= 4 && p.length < 6 && !ignorar.has(p) && !/^\d+$/.test(p)))].slice(0, 8);
+                const palavras = textoLimpo.split(/\s+/).filter(p => p.length > 2 && !ignorar.has(p) && !/^\d+$/.test(p));
+                const termosPergunta = [...new Set(palavras.filter(p => p.length >= 6))].slice(0, 10);
+                const palavrasMedias = [...new Set(palavras.filter(p => p.length >= 4 && p.length < 6))].slice(0, 8);
                 
                 let termosComPeso = [
                     ...dispositivos.map(t => ({ termo: t, peso: 3 })),
@@ -983,21 +986,27 @@ ${contextDecisions}`;
 
                 btnText.innerHTML = '🔍 Extraindo termos...';
                 
-                const ignorar = new Set(['qual', 'entendimento', 'sobre', 'que', 'ser', 'ter', 'poder', 'para', 'dos', 'das', 'com', 'como', 'estabelecido', 'ou', 'em', 'um', 'uma', 'na', 'no', 'aos', 'por', 'pelo', 'pela', 'tem', 'deve', 'são', 'mais', 'conforme', 'autos', 'demonstrado', 'tendo', 'vista', 'ainda', 'sendo', 'foi', 'nos', 'nas', 'sem', 'sob', 'essa', 'esse', 'desta', 'deste', 'suas', 'seus']);
-                const textoNorm = normalizar(userText);
+                const ignorar = new Set(['qual', 'entendimento', 'sobre', 'que', 'ser', 'ter', 'poder', 
+                    'para', 'dos', 'das', 'com', 'como', 'estabelecido', 'ou', 'em', 'um', 'uma', 
+                    'na', 'no', 'aos', 'por', 'pelo', 'pela', 'tem', 'deve', 'sao', 'mais', 
+                    'conforme', 'autos', 'demonstrado', 'tendo', 'vista', 'ainda', 'sendo', 'foi', 
+                    'nos', 'nas', 'sem', 'sob', 'essa', 'esse', 'desta', 'deste', 'suas', 'seus',
+                    'este', 'esta', 'caso', 'seguinte', 'analisar', 'entretanto', 'ressaltou',
+                    'verificou', 'nada', 'qualquer', 'entao', 'bem', 'tais', 'pelas', 'pelos']);
+                
+                // MÁGICA DE LIMPEZA: Remove pontuação e vírgulas
+                const textoLimpo = userText.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9-]/g, ' ').replace(/\s+/g, ' ').trim();
                 
                 const dispositivosRegex = /(?:art(?:igo)?\.?\s*\d+[\w-]*|lei\s+\d+[\./]\d+|decreto\s+\d+)/gi;
                 const dispositivos = [...new Set((userText.match(dispositivosRegex) || []).map(d => normalizar(d)))];
                 
-                const palavras = textoNorm.split(/\s+/);
-                const termosTecnicos = [...new Set(palavras.filter(p => (p.length >= 8 || p.includes('-')) && !ignorar.has(p) && !/^\d+$/.test(p)))];
+                const palavras = textoLimpo.split(/\s+/).filter(p => p.length > 2 && !ignorar.has(p) && !/^\d+$/.test(p));
+                const termosTecnicos = [...new Set(palavras.filter(p => p.length >= 7 || p.includes('-')))];
                 
                 const bigramas = [];
                 for (let i = 0; i < palavras.length - 1; i++) {
-                    if (!ignorar.has(palavras[i]) && !ignorar.has(palavras[i+1])) {
-                        const bigrama = `${palavras[i]} ${palavras[i+1]}`;
-                        if (bigrama.length > 6) bigramas.push(bigrama);
-                    }
+                    const bigrama = `${palavras[i]} ${palavras[i+1]}`;
+                    if (bigrama.length > 8) bigramas.push(bigrama);
                 }
                 const bigramasUnicos = [...new Set(bigramas)].slice(0, 10);
                 
@@ -1005,7 +1014,7 @@ ${contextDecisions}`;
                     ...dispositivos.map(t => ({ termo: t, peso: 3 })),
                     ...bigramasUnicos.map(t => ({ termo: t, peso: 2.5 })),
                     ...termosTecnicos.slice(0, 15).map(t => ({ termo: t, peso: 2 })),
-                    ...palavras.filter(p => p.length > 4 && !ignorar.has(p)).slice(0, 20).map(t => ({ termo: t, peso: 1 }))
+                    ...palavras.filter(p => p.length > 4).slice(0, 20).map(t => ({ termo: t, peso: 1 }))
                 ];
                 
                 const termosMap = new Map();
