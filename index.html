@@ -115,7 +115,8 @@
                         <span class="absolute left-5 top-4 opacity-40 text-xl">🔍</span>
                     </div>
                     
-                    <select id="sortOrder" class="..."> <option value="relevance">📊 Relevância (Match)</option>
+                    <select id="sortOrder" class="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none font-bold text-slate-600 dark:text-slate-300 shadow-sm cursor-pointer hover:border-blue-400 transition" onchange="executeSearch()">
+    <option value="relevance">📊 Relevância (Match)</option>
     <option value="recent">🕐 Mais Recentes</option>
     <option value="old">🕐 Mais Antigos</option>
     <option value="year_new">📅 Ano Processo (Novo→Antigo)</option>
@@ -241,17 +242,13 @@
         let corpusIndexPreprocessado = null;
 
         function preprocessarCorpus() {
-           let corpusIndexPreprocessado = null;
-
-        function preprocessarCorpus() {
             console.time('Preprocessamento Unificado (TF-IDF e BM25)');
             
             const termFrequency = new Map();
             const docVectors = new Map();
-            let totalPalavras = 0; // Necessário para o BM25
+            let totalPalavras = 0; 
             
             fullData.forEach((doc, docIdx) => {
-                // Junta TUDO para a indexação máxima
                 const textoCompleto = normalizar(`${doc.tribunal} ${doc.processo} ${doc.ementa} ${doc.relator || ''} ${doc.assunto || ''}`);
                 const termos = textoCompleto.split(/\s+/).filter(t => t.length > 2);
                 
@@ -269,12 +266,13 @@
                 termFrequency,
                 docVectors,
                 totalDocs: fullData.length,
-                avgDocLength: totalPalavras / fullData.length // A média de tamanho que o BM25 exige
+                avgDocLength: totalPalavras / fullData.length
             };
             
             console.timeEnd('Preprocessamento Unificado (TF-IDF e BM25)');
             console.log(`✓ Motor Unificado Pronto: ${termFrequency.size} termos únicos.`);
         }
+
         let currentPage = 1, pageSize = 50;
         let searchTimeout;
         let lastFilteredData = [];
@@ -319,7 +317,6 @@
         };
         request.onsuccess = (e) => { db = e.target.result; syncUI(); };
 
-        // Remove a busca no localStorage, forçando o uso do CONFIG_TRIBUNAIS para todos os usuários
         let tribunalLinks = CONFIG_TRIBUNAIS;
         
         function renderLinkManager() {
@@ -421,14 +418,13 @@
             });
             if (needsUpdate) await saveAll('geral', fullData); 
 
-           document.getElementById('grandTotal').innerText = fullData.length.toLocaleString('pt-BR');
+            document.getElementById('grandTotal').innerText = fullData.length.toLocaleString('pt-BR');
             renderLinkManager();
             renderSideFilters();
             executeSearch();
             
             // Ligar o motor do TF-IDF assim que o banco carregar
             preprocessarCorpus();
-        }
         }
 
         function handleSearchInput() {
