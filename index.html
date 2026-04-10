@@ -161,30 +161,46 @@
 
      </div>
 
-    <div id="aiDrawerOverlay" class="fixed inset-0 z-[6000] ai-drawer-overlay hidden" onclick="closeAiDrawer()"></div>
-    <div id="aiDrawer" class="fixed top-0 right-0 w-[500px] max-w-full h-full bg-white dark:bg-slate-900 z-[6001] shadow-2xl ai-drawer translate-x-full flex flex-col border-l border-slate-200 dark:border-slate-700">
-        <div class="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-purple-600 text-white">
+   <div id="aiDrawerOverlay" class="fixed inset-0 z-[6000] ai-drawer-overlay hidden" onclick="closeAiDrawer()"></div>
+    <div id="aiDrawer" class="fixed top-0 right-0 w-[500px] max-w-full h-full bg-slate-50 dark:bg-slate-900 z-[6001] shadow-2xl ai-drawer translate-x-full flex flex-col border-l border-slate-200 dark:border-slate-700">
+        <div class="p-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-blue-600 text-white">
             <div>
-                <h2 class="text-xl font-black flex items-center gap-2">✨ Juris AI</h2>
-                <p class="text-xs text-purple-200 font-medium mt-1">Busca Semântica Avançada (Cohere)</p>
+                <h2 class="text-xl font-black flex items-center gap-2">✨ Busca Avançada IA</h2>
+                <p class="text-xs text-blue-200 font-medium mt-1">Motor Semântico + Lexical</p>
             </div>
             <button onclick="closeAiDrawer()" class="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition font-bold text-sm">✕</button>
         </div>
-        
-        <div class="p-6 flex-1 overflow-y-auto custom-scroll flex flex-col gap-6" id="aiChatArea">
-            <div class="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-xl border border-purple-100 dark:border-purple-800 text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
-                Olá. Faça sua pergunta livremente ou cole seu texto. O sistema fará uma triagem inicial e usará Análise Semântica Profunda para ler os significados.
+
+        <div class="p-6 flex-1 overflow-y-auto custom-scroll flex flex-col gap-5" id="aiChatArea">
+            <div class="bg-blue-50 dark:bg-blue-900/20 p-5 rounded-2xl border border-blue-100 dark:border-blue-800 text-sm text-slate-700 dark:text-slate-300 leading-relaxed shadow-sm">
+                <p class="mb-3 font-bold text-blue-800 dark:text-blue-300">Como usar a Busca Turbinada:</p>
+                <ol class="list-decimal pl-4 space-y-2 text-xs">
+                    <li>Preencha a <b>Tese Principal</b> (obrigatório).</li>
+                    <li>Adicione <b>Sinônimos</b> para ampliar a rede (opcional).</li>
+                    <li>Coloque <b>Acessórios</b> para filtrar o cenário (opcional).</li>
+                </ol>
+                <button onclick="copiarPromptMagico()" class="mt-4 w-full bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400 font-bold text-[10px] uppercase tracking-widest py-2 rounded-lg hover:bg-blue-600 hover:text-white transition shadow-sm">
+                    📋 Copiar Prompt p/ ChatGPT
+                </button>
             </div>
         </div>
 
-        <div class="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800">
-            <textarea id="aiInput" class="w-full p-4 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 outline-none focus:border-purple-500 text-sm dark:text-white custom-scroll resize-none" rows="3" placeholder="Ex: Qual o entendimento dos TCs sobre sobrepreço em obras rodoviárias?"></textarea>
-            <div class="flex gap-2 mt-3 w-full">
-                <button onclick="askAI()" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-black text-[10px] sm:text-[11px] uppercase tracking-widest p-3 rounded-xl shadow-lg transition flex items-center justify-center gap-2">
-                    <span id="aiBtnText">✨ Pesquisar no Banco</span>
-                </button>
-                <button id="fundamentarBtn" onclick="fundamentarTexto()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] sm:text-[11px] uppercase tracking-widest p-3 rounded-xl shadow-lg transition flex items-center justify-center gap-2">
-                    <span id="fundBtnText">⚖️ Fundamentar meu Texto</span>
+        <div class="p-6 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+            <div class="space-y-3">
+                <div>
+                    <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Tese Principal <span class="text-rose-500">*</span></label>
+                    <input type="text" id="aiTese" class="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm dark:text-white transition-all" placeholder="Ex: ausência prestação contas">
+                </div>
+                <div>
+                    <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Sinônimos (Tese)</label>
+                    <input type="text" id="aiSinonimos" class="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm dark:text-white transition-all" placeholder="Ex: omissão, revelia, dever de prestar">
+                </div>
+                <div>
+                    <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Termos Acessórios / Contexto</label>
+                    <input type="text" id="aiAcessorios" class="w-full p-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm dark:text-white transition-all" placeholder="Ex: convênio, saúde, prefeitura, repasse">
+                </div>
+                <button onclick="buscarIA()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black text-[12px] uppercase tracking-widest p-4 rounded-xl shadow-lg shadow-blue-500/30 transition flex items-center justify-center gap-2 mt-2">
+                    <span id="aiBtnText">🔍 Buscar e Analisar</span>
                 </button>
             </div>
         </div>
@@ -785,7 +801,7 @@
             chatArea.scrollTop = chatArea.scrollHeight;
         }
 
-     function copiarPromptMagico() {
+    function copiarPromptMagico() {
             const texto = `Atue como um especialista em indexação de jurisprudência. Vou te fornecer um trecho do meu relatório. Extraia os termos para minha ferramenta de busca.
 Retorne EXATAMENTE neste formato (apenas palavras soltas separadas por vírgula):
 
@@ -811,6 +827,11 @@ TEXTO DO RELATÓRIO:
             const acessorios = acessoriosEl.value.trim();
 
             if (!tese) return alert("A Tese Principal é obrigatória!");
+
+            // Limpa os campos após enviar
+            teseEl.value = '';
+            sinonimosEl.value = '';
+            acessoriosEl.value = '';
 
             // Monta a mensagem visual para o usuário
             let userMsg = `**🎯 TESE:** ${tese}`;
@@ -883,7 +904,7 @@ TEXTO DO RELATÓRIO:
                 // ========================================
                 btnText.innerHTML = '🧠 Rerank semântico...';
                 
-                const queryRerank = `${tese} ${acessorios}`;
+                const queryRerank = `${tese} ${sinonimos} ${acessorios}`.trim();
                 const docTexts = top100.map(d => d.ementa.substring(0, 3000));
                 const rerankResponse = await callCohereRerank(queryRerank, docTexts);
                 
