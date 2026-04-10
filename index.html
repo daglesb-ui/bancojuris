@@ -604,8 +604,7 @@
 
             let baseData = window.iaFilterIds ? fullData.filter(d => window.iaFilterIds.includes(d.id)) : fullData;
 
-            let textFiltered = baseData.filter(d => {
-                let textFiltered = baseData.filter(d => {
+                  let textFiltered = baseData.filter(d => {
                 if (window.iaFilterIds) return true; // <-- A MÁGICA: Pula o filtro se for resultado da IA
                 if (terms.length === 0) return true;
                 let searchBody = normalizar(`${d.tribunal} ${d.processo} ${d.ementa}`);
@@ -1007,7 +1006,7 @@ ${contextDecisions}`;
                     pergunta: userMsg, 
                     resposta: respostaSanitizada, 
                     base: contextDecisions,
-                    ids: topFinal.map(d => d.id)
+                    ids: topFinal.map(d => d.id),
                     termosBusca: `${tese} ${sinonimos} ${acessorios}`.trim()
                 };
                 
