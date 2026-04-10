@@ -961,7 +961,7 @@ ${contextDecisions}`;
             }
         }
 
-      async function fundamentarTexto() {
+     async function fundamentarTexto() {
             const inputEl = document.getElementById('aiInput');
             const userText = inputEl.value.trim();
             
@@ -1237,78 +1237,6 @@ ${contextDecisions}
                 btnText.innerHTML = originalBtnHtml;
             }
         }
-
-        // Contar decisões aprovadas (aproximado - conta blocos com formato correto)
-        const blocosDecisao = respostaFinal.split('---').filter(bloco => 
-            bloco.includes('**[') && bloco.includes('TRECHO DA EMENTA')
-        );
-        const numAprovadas = blocosDecisao.length;
-
-        if (numAprovadas === 0) {
-            // Resposta veio formatada errado mas sem rejeição explícita
-            appendToChat(`⚠️ **Resposta da IA sem formatação adequada.**
-
-A IA retornou texto mas não seguiu o formato esperado. Exibindo resposta bruta:
-
-${respostaFinal}
-
-**Ação recomendada:** Tente novamente. Se persistir, o prompt pode precisar ajuste.`, false);
-            btnText.innerHTML = originalBtnHtml;
-            return;
-        }
-
-        appendToChat(`✅ **Análise Concluída:** ${numAprovadas} decisão(ões) aprovada(s) de ${top20.length} analisadas`, false);
-
-        // ========================================
-        // SANITIZAR E EXIBIR RESPOSTA
-        // ========================================
-        
-        // Limpar qualquer HTML/markup que a IA possa ter inserido
-        let respostaSanitizada = respostaFinal
-            .replace(/<[^>]*>/g, '') // Remove tags HTML
-            .replace(/class="[^"]*"/g, '') // Remove atributos class
-            .replace(/style="[^"]*"/g, '') // Remove atributos style
-            .trim();
-
-        // Cache e exportação
-        const stats = `Corpus: ${totalDocs} | Peneira: ${top100.length} | Rerank: ${topRelevant.length} | Aprovadas: ${numAprovadas}`;
-        
-        sessionStorage.setItem(`fund_${cacheKey}`, JSON.stringify({
-            resposta: respostaSanitizada,
-            timestamp: Date.now(),
-            stats: stats
-        }));
-        
-        const dadosExportacao = { 
-            pergunta: `FUNDAMENTAÇÃO:\n"${userText}"`, 
-            resposta: respostaSanitizada, 
-            base: contextDecisions,
-            ids: top20.map(d => d.id),
-            metadados: {
-                termos_busca: Array.from(termosMap.keys()),
-                decisoes_analisadas: top20.length,
-                threshold_semantico: cutoff.toFixed(3),
-                score_medio: avgScore.toFixed(3),
-                aprovadas: numAprovadas
-            }
-        };
-        
-        appendToChat(respostaSanitizada, false, dadosExportacao);
-        appendToChat(`\n📊 **Estatísticas:** ${stats}`, false);
-
-    } catch (e) {
-        let msgErro = e.message;
-        if (msgErro.includes("429") || msgErro.toLowerCase().includes("rate limit")) {
-            msgErro = "⚠️ Limite de requisições atingido. Aguarde 1-2 minutos.";
-        } else if (msgErro.toLowerCase().includes("parse")) {
-            msgErro = "⚠️ Erro ao processar resposta da IA. A resposta pode estar malformada.";
-        }
-        appendToChat(`❌ **Erro:** ${msgErro}`, false);
-        console.error("Erro detalhado:", e);
-    } finally {
-        btnText.innerHTML = originalBtnHtml;
-    }
-}
 
         // ================= SIDE FILTERS =================
         function renderSideFilters() { updateSideFilters(fullData, fullData); }
