@@ -100,11 +100,18 @@
             <h3 class="text-[10px] font-black text-slate-400 uppercase mb-3 mt-2 tracking-widest">Por Órgão</h3>
             <div id="filterTribunalList" class="space-y-1 mb-8"></div>
 
-            <div class="flex justify-between items-center mb-3">
-                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest m-0">Ano do Processo</h3>
-                <button onclick="toggleAll('year')" class="text-[9px] font-bold text-blue-500 hover:text-blue-700 uppercase transition">Todos / Nenhum</button>
-            </div>
-            <div id="filterYearList" class="pb-10"></div>
+            <details class="mb-10 bg-slate-50 dark:bg-slate-700/30 rounded-2xl border border-slate-200 dark:border-slate-600 group transition-all">
+                <summary class="p-4 text-[10px] font-black text-slate-600 dark:text-slate-300 uppercase tracking-widest cursor-pointer list-none flex justify-between items-center hover:bg-slate-100 dark:hover:bg-slate-700 rounded-2xl">
+                    <span class="flex items-center gap-2">📅 Ano do Processo</span>
+                    <span class="text-slate-400 group-open:rotate-180 transition-transform">▼</span>
+                </summary>
+                <div class="p-4 pt-0">
+                    <div class="flex justify-end mb-3">
+                        <button onclick="toggleAll('year')" class="text-[9px] font-bold text-blue-500 hover:text-blue-700 uppercase transition">Todos / Nenhum</button>
+                    </div>
+                    <div id="filterYearList" class="max-h-48 overflow-y-auto custom-scroll space-y-1"></div>
+                </div>
+            </details>
         </aside>
 
         <main class="flex-1 p-10 relative">
@@ -598,6 +605,8 @@
             let baseData = window.iaFilterIds ? fullData.filter(d => window.iaFilterIds.includes(d.id)) : fullData;
 
             let textFiltered = baseData.filter(d => {
+                let textFiltered = baseData.filter(d => {
+                if (window.iaFilterIds) return true; // <-- A MÁGICA: Pula o filtro se for resultado da IA
                 if (terms.length === 0) return true;
                 let searchBody = normalizar(`${d.tribunal} ${d.processo} ${d.ementa}`);
                 
@@ -999,6 +1008,7 @@ ${contextDecisions}`;
                     resposta: respostaSanitizada, 
                     base: contextDecisions,
                     ids: topFinal.map(d => d.id)
+                    termosBusca: `${tese} ${sinonimos} ${acessorios}`.trim()
                 };
                 
                 appendToChat(respostaSanitizada, false, dadosExportacao);
@@ -1334,16 +1344,28 @@ ${contextDecisions}`;
 
         function filtrarTelaPorIA() {
             if (!window.lastAiExport || !window.lastAiExport.ids) return;
-            window.iaFilterIds = window.lastAiExport.ids; 
             
-            document.getElementById('searchInput').value = '';
-            document.getElementById('exactMatch').checked = false;
-            selectedTribunais = [];
-            selectedYears = [];
+            // 1. Diz ao sistema para mostrar apenas os IDs que a IA escolheu
+            window.iaFilterIds = window.lastAiExport.ids;
             
-            closeAiDrawer(); 
-            executeSearch(); 
-            showToast('👁️ Mostrando as decisões analisadas pela IA!');
+            // 2. O TRUQUE DO GRIFO: Pega os termos da IA e joga na barra principal
+            if (window.lastAiExport.termosBusca) {
+                const searchInput = document.getElementById('searchInput');
+                // Remove as vírgulas e joga na barra
+                searchInput.value = window.lastAiExport.termosBusca.replace(/,/g, ' '); 
+                
+                // Desmarca a opção "Termo Exato" para garantir que ele grife as palavras soltas
+                const exactMatch = document.getElementById('exactMatch');
+                if (exactMatch) exactMatch.checked = false;
+            }
+
+            // 3. Fecha a gaveta da IA para o usuário ver a tela principal limpa
+            if (typeof closeAiDrawer === 'function') closeAiDrawer();
+
+            // 4. Manda rodar a pesquisa e atualizar a tela
+            resetPageAndSearch();
+            
+            showToast('👁️ Decisões da IA filtradas na tela!');
         }
 
         function buscarDuplicidades() {
