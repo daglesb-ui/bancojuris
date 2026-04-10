@@ -884,7 +884,7 @@
                 const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
                 const stdDev = Math.sqrt(scores.reduce((sq, n) => sq + Math.pow(n - avgScore, 2), 0) / scores.length);
                 
-                const cutoff = Math.max(0.20, avgScore + 0.3 * stdDev);
+                const cutoff = Math.max(0.1, avgScore + 0.1 * stdDev);
                 let topRelevant = rerankResponse.results.filter(r => r.relevance_score > cutoff);
 
                 if (topRelevant.length === 0) {
@@ -900,30 +900,19 @@
                 
                 const contextDecisions = top15.map((d, idx) => `[DECISÃO ${idx}] (Score: ${topScores[idx].toFixed(3)})\nTribunal: ${d.tribunal}\nProcesso: ${d.processo}\nAno: ${d.ano || 'N/D'}\nEmenta: ${d.ementa.substring(0, 2000)}${d.ementa.length > 2000 ? '... [TRECHO CORTADO]' : ''}\n${'─'.repeat(70)}\n`).join('\n');
                 
-                const finalPrompt = `Você é auditor sênior de Tribunal de Contas com 15 anos de experiência.
+                const finalPrompt = `Você é um Consultor Jurídico de Inteligência Artificial para Controle Externo.
 
 **PERGUNTA DO USUÁRIO:**
 "${userText}"
 
 **SUA TAREFA:**
+Sintetize uma resposta inteligente, técnica e completa respondendo à pergunta do usuário, baseando-se nas decisões fornecidas. 
 
-**PASSO 1 - FILTRO DE PERTINÊNCIA:**
-Analise se alguma das decisões [0-${top15.length - 1}] responde DIRETAMENTE à pergunta.
-Critérios:
-- Decisão trata do MESMO ASSUNTO MATERIAL da pergunta (não force analogias fracas)
-- Decisão fornece elemento concreto que ajuda a responder (não apenas menciona o tema)
-- Evite misturar contextos incompatíveis (ex: pergunta sobre escolas × decisão sobre rodovias)
-
-**PASSO 2A - SE NENHUMA DECISÃO FOR PERTINENTE:**
-Responda EXATAMENTE esta frase (copie literalmente):
-"Não encontrei jurisprudência no banco atual que responda diretamente a esta questão com o contexto adequado."
-
-**PASSO 2B - SE HOUVER DECISÕES PERTINENTES:**
-Redija uma resposta objetiva seguindo estas regras:
-1. **Estrutura:** Responda a pergunta de forma direta (2-4 parágrafos), cite decisões usando o formato: [Tribunal - Processo] e organize por linha argumentativa.
-2. **Citação obrigatória:** SEMPRE cite ao final de cada afirmação baseada em decisão. Exemplo: "...conforme entendimento consolidado [TCU - 012.345/2022]."
-3. **Proibições absolutas:** NÃO invente informações não contidas nas ementas, NÃO cite leis não mencionadas nas decisões, NÃO crie entendimento "por analogia".
-4. **Tom:** Técnico, objetivo, sem rodeios.
+**DIRETRIZES DE INTELIGÊNCIA:**
+1. **Conecte os pontos:** Não liste apenas as decisões. Crie uma narrativa fluida. (Ex: "A jurisprudência majoritária entende que X [TCU - 123]. No entanto, existem ressalvas quando Y [TCE - 456].")
+2. **Uso de Analogia:** Se as decisões não responderem com o caso exato, responda usando os princípios jurídicos mais próximos presentes nas ementas e explique a relação.
+3. **Citação Obrigatória:** Coloque a tag [Órgão - Processo] ao final das afirmações que tirar do banco.
+4. **Honestidade Contextual:** Se as decisões fornecidas forem insuficientes para uma resposta completa, responda o que for possível e adicione ao final: "Nota: O banco de dados atual possui limitação de precedentes específicos para abranger todos os cenários desta questão."
 
 **DECISÕES DISPONÍVEIS:**
 ${contextDecisions}`;
@@ -1078,7 +1067,7 @@ ${contextDecisions}`;
                 );
                 
                 // Threshold permissivo
-                const cutoff = Math.max(0.18, avgScore + 0.2 * stdDev);
+                const cutoff = Math.max(0.1, avgScore + 0.1 * stdDev);
                 let topRelevant = rerankResponse.results.filter(r => r.relevance_score > cutoff);
                 
                 // Fallback: pegar pelo menos as top 20 se threshold for muito alto
@@ -1111,50 +1100,29 @@ ${d.ementa.substring(0, 1800)}${d.ementa.length > 1800 ? '\n\n[... ementa trunca
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 `).join('\n\n');
 
-                const finalPrompt = `Você é Conselheiro Relator do TCMRio fundamentando um Voto.
+                const finalPrompt = `Você é um Consultor Jurídico Sênior de Tribunal de Contas (TCMRio).
+Sua missão é ajudar um auditor a encontrar a melhor fundamentação ou tese análoga para o texto dele.
 
-**TRECHO DO VOTO:**
+**TRECHO DO VOTO DO AUDITOR:**
 "${userText}"
 
-**TAREFA EM 2 ETAPAS:**
+Você recebeu as ${top20.length} decisões que mais se aproximam desse tema. 
 
-**ETAPA 1 - ANÁLISE DE PERTINÊNCIA:**
+**SUA TAREFA:**
+Não seja rígido a ponto de descartar tudo. Procure o **Princípio Jurídico** ou a **Ratio Decidendi** por trás das decisões. Mesmo que a área material não seja idêntica (ex: saúde vs educação), se o entendimento sobre a lei, contabilidade, ou infração for aplicável, USE A DECISÃO.
 
-Critérios PERMISSIVOS (aceite analogias razoáveis):
-
-1. **Área compatível:** Decisão trata de tema relacionado ao Voto (contabilidade pública, demonstrações, NBC TSP, transparência fiscal, etc.)
-2. **Utilidade:** Decisão fornece precedente ou diretriz aplicável
-3. **Rejeitar apenas se:** Decisão for de área totalmente incompatível (ex: Voto sobre contabilidade × decisão sobre licitação de obras)
-
-**ETAPA 2 - FORMATAÇÃO (CRÍTICO - SIGA EXATAMENTE):**
-
-Para cada decisão APROVADA, use ESTE FORMATO EXATO (sem HTML, sem markup especial):
+Para as decisões que puderem ser aproveitadas (diretamente ou por analogia), formate EXATAMENTE assim (separe com "---"):
 
 ---
 **[Tribunal - Processo - Ano]**
-
-TRECHO DA EMENTA:
-"[Copie literalmente 100-250 palavras da ementa que sustentam a tese]"
-
-APLICAÇÃO:
-Esta decisão fundamenta porque [1 frase objetiva explicando a conexão com o argumento do Voto].
+TRECHO DA EMENTA: "[Copie o trecho útil da ementa aqui]"
+COMO APLICAR: [Explique em 2 frases como o auditor pode usar esse precedente para sustentar a tese dele, mesmo que seja por analogia].
 ---
 
-**SE NENHUMA FOR APROVADA:**
-Escreva APENAS a linha:
-REJEIÇÃO_TOTAL: [motivo breve]
+Se (e apenas se) NENHUMA das decisões tiver absolutamente NADA a ver com a lógica jurídica do texto, responda: "NENHUMA_APROVADA".
 
-**IMPORTANTE:**
-- NÃO use símbolos > ou markdown complexo
-- NÃO parafraseie ementas
-- Ordene da mais pertinente para menos
-- Separe cada decisão com linha "---"
-
-**DECISÕES PARA AVALIAR:**
-
-${contextDecisions}
-
-**LEMBRE-SE:** Para Votos técnicos sobre contabilidade/demonstrações/NBC TSP, aceite precedentes de TCs sobre temas fiscais/patrimoniais mesmo que o contexto não seja idêntico.`;
+**DECISÕES PARA ANÁLISE:**
+${contextDecisions}`;
 
                 const respostaFinal = await callCohereAPI(finalPrompt);
                 
