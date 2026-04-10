@@ -159,6 +159,8 @@
         </main>
     </div>
 
+     </div>
+
     <div id="aiDrawerOverlay" class="fixed inset-0 z-[6000] ai-drawer-overlay hidden" onclick="closeAiDrawer()"></div>
     <div id="aiDrawer" class="fixed top-0 right-0 w-[500px] max-w-full h-full bg-white dark:bg-slate-900 z-[6001] shadow-2xl ai-drawer translate-x-full flex flex-col border-l border-slate-200 dark:border-slate-700">
         <div class="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-purple-600 text-white">
@@ -783,234 +785,60 @@
             chatArea.scrollTop = chatArea.scrollHeight;
         }
 
-        async function askAI() {
-            const inputEl = document.getElementById('aiInput');
-            const userText = inputEl.value.trim();
-            if (!userText) return;
+     function copiarPromptMagico() {
+            const texto = `Atue como um especialista em indexação de jurisprudência. Vou te fornecer um trecho do meu relatório. Extraia os termos para minha ferramenta de busca.
+Retorne EXATAMENTE neste formato (apenas palavras soltas separadas por vírgula):
 
-            inputEl.value = '';
-            appendToChat(userText, true);
+TESE_PRINCIPAL: [A infração ou tese central em 2 a 4 palavras]
+SINONIMOS: [3 a 5 palavras que são sinônimos da tese principal]
+ACESSORIOS: [2 a 4 palavras que dão o cenário/contexto da infração]
+
+TEXTO DO RELATÓRIO:
+[COLE SEU TEXTO AQUI]`;
+            
+            navigator.clipboard.writeText(texto).then(() => {
+                showToast('📋 Prompt copiado! Cole no ChatGPT ou Claude.');
+            });
+        }
+
+        async function buscarIA() {
+            const teseEl = document.getElementById('aiTese');
+            const sinonimosEl = document.getElementById('aiSinonimos');
+            const acessoriosEl = document.getElementById('aiAcessorios');
+
+            const tese = teseEl.value.trim();
+            const sinonimos = sinonimosEl.value.trim();
+            const acessorios = acessoriosEl.value.trim();
+
+            if (!tese) return alert("A Tese Principal é obrigatória!");
+
+            // Monta a mensagem visual para o usuário
+            let userMsg = `**🎯 TESE:** ${tese}`;
+            if (sinonimos) userMsg += `\n**🔄 SINÔNIMOS:** ${sinonimos}`;
+            if (acessorios) userMsg += `\n**🏷️ CONTEXTO:** ${acessorios}`;
+            
+            appendToChat(userMsg, true);
 
             const btnText = document.getElementById('aiBtnText');
             const originalBtnHtml = btnText.innerHTML;
 
             try {
-                const cacheKey = normalizar(userText.substring(0, 150));
-                const cached = sessionStorage.getItem(`ask_${cacheKey}`);
-                if (cached) {
-                    const { resposta, timestamp, stats } = JSON.parse(cached);
-                    if (Date.now() - timestamp < 3600000) {
-                        appendToChat(`🔄 **(Resposta cacheada)**\n\n${resposta}`, false);
-                        if (stats) appendToChat(`📊 ${stats}`, false);
-                        return;
-                    }
-                }
+                btnText.innerHTML = '🔍 Mapeando termos...';
+                
+                // Mágica de Limpeza
+                const norm = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9-]/g, ' ').replace(/\s+/g, ' ').trim();
+                
+                const termosTese = norm(tese).split(' ').filter(t => t.length > 2);
+                const termosSin = sinonimos ? norm(sinonimos).split(' ').filter(t => t.length > 2) : [];
+                const termosAcc = acessorios ? norm(acessorios).split(' ').filter(t => t.length > 2) : [];
 
-                btnText.innerHTML = '🔍 Extraindo contexto...';
-                
-                const ignorar = new Set(['qual', 'entendimento', 'sobre', 'que', 'ser', 'ter', 'poder', 
-                    'para', 'dos', 'das', 'com', 'como', 'ou', 'em', 'um', 'uma', 'na', 'no', 
-                    'aos', 'por', 'pelo', 'pela', 'tem', 'deve', 'sao', 'mais', 'conforme', 
-                    'tendo', 'vista', 'nos', 'nas', 'sua', 'seu', 'essa', 'esse', 'foi', 'ser',
-                    'este', 'esta', 'caso', 'seguinte', 'analisar', 'entretanto', 'ressaltou',
-                    'verificou', 'nada', 'qualquer', 'entao', 'bem', 'tais', 'pelas', 'pelos']);
-                
-                // MÁGICA DE LIMPEZA: Remove pontuação e vírgulas para não poluir o TF-IDF
-                const textoLimpo = userText.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9-]/g, ' ').replace(/\s+/g, ' ').trim();
-                
-                const dispositivosRegex = /(?:art(?:igo)?\.?\s*\d+[\w-]*|lei\s+\d+[\./]\d+|decreto\s+\d+|portaria\s+\d+)/gi;
-                const dispositivos = [...new Set((userText.match(dispositivosRegex) || []).map(d => normalizar(d)))];
-                
-                const palavras = textoLimpo.split(/\s+/).filter(p => p.length > 2 && !ignorar.has(p) && !/^\d+$/.test(p));
-                const termosPergunta = [...new Set(palavras.filter(p => p.length >= 6))].slice(0, 10);
-                const palavrasMedias = [...new Set(palavras.filter(p => p.length >= 4 && p.length < 6))].slice(0, 8);
-                
+                // Pesos Inteligentes: Tese vale muito mais que o contexto
                 let termosComPeso = [
-                    ...dispositivos.map(t => ({ termo: t, peso: 3 })),
-                    ...termosPergunta.map(t => ({ termo: t, peso: 2 })),
-                    ...palavrasMedias.map(t => ({ termo: t, peso: 1.5 }))
+                    ...termosTese.map(t => ({ termo: t, peso: 3.5 })),
+                    ...termosSin.map(t => ({ termo: t, peso: 2.5 })),
+                    ...termosAcc.map(t => ({ termo: t, peso: 1.5 }))
                 ];
-                
-                const termosMap = new Map();
-                termosComPeso.forEach(({ termo, peso }) => {
-                    if (!termosMap.has(termo) || termosMap.get(termo) < peso) {
-                        termosMap.set(termo, peso);
-                    }
-                });
-                termosComPeso = Array.from(termosMap, ([termo, peso]) => ({ termo, peso }));
 
-                if (termosComPeso.length === 0) {
-                    appendToChat(`❌ Não consegui extrair termos relevantes. Tente reformular a pergunta com mais detalhes.`, false);
-                    btnText.innerHTML = originalBtnHtml;
-                    return;
-                }
-
-                btnText.innerHTML = '⚡ Pré-filtrando banco...';
-                if (!corpusIndexPreprocessado) preprocessarCorpus();
-                
-                const { termFrequency, docVectors, totalDocs } = corpusIndexPreprocessado;
-                
-                let scoredData = [];
-                docVectors.forEach((termosDoc, docIdx) => {
-                    let score = 0;
-                    termosComPeso.forEach(({ termo, peso }) => {
-                        if (termosDoc.has(termo)) {
-                            const idf = Math.log(totalDocs / (termFrequency.get(termo) || 1));
-                            score += peso * idf;
-                        }
-                    });
-                    if (score > 0) scoredData.push({ item: fullData[docIdx], score });
-                });
-
-                scoredData.sort((a, b) => b.score - a.score);
-                let top100 = scoredData.slice(0, 100).map(d => d.item);
-
-                if (top100.length === 0) {
-                    const termosBuscados = Array.from(termosMap.keys()).slice(0, 5).join(', ');
-                    appendToChat(`📭 Nenhuma decisão encontrada com os termos: ${termosBuscados}`, false);
-                    btnText.innerHTML = originalBtnHtml;
-                    return;
-                }
-
-                const termosBuscados = Array.from(termosMap.keys()).slice(0, 6).join(', ');
-                appendToChat(`🎯 **Análise Semântica (Rerank):**\nPré-selecionei ${top100.length} decisões (termos: ${termosBuscados}...). Agora a IA está lendo o **significado** para separar apenas as que respondem exatamente.`, false);
-
-                btnText.innerHTML = '🧠 Lendo significados...';
-                
-                const docTexts = top100.map(d => d.ementa.substring(0, 3000));
-                const rerankResponse = await callCohereRerank(userText, docTexts);
-                
-                const scores = rerankResponse.results.map(r => r.relevance_score);
-                const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-                const stdDev = Math.sqrt(scores.reduce((sq, n) => sq + Math.pow(n - avgScore, 2), 0) / scores.length);
-                
-                const cutoff = Math.max(0.1, avgScore + 0.1 * stdDev);
-                let topRelevant = rerankResponse.results.filter(r => r.relevance_score > cutoff);
-
-                if (topRelevant.length === 0) {
-                    appendToChat(`📉 Não encontrei decisões com contexto semântico aplicável (threshold: ${cutoff.toFixed(3)}, média: ${avgScore.toFixed(3)}).`, false);
-                    btnText.innerHTML = originalBtnHtml;
-                    return;
-                }
-
-                let top15 = topRelevant.slice(0, 15).map(r => top100[r.index]);
-                const topScores = topRelevant.slice(0, 15).map(r => r.relevance_score);
-
-                btnText.innerHTML = '✍️ Redigindo resposta...';
-                
-                const contextDecisions = top15.map((d, idx) => `[DECISÃO ${idx}] (Score: ${topScores[idx].toFixed(3)})\nTribunal: ${d.tribunal}\nProcesso: ${d.processo}\nAno: ${d.ano || 'N/D'}\nEmenta: ${d.ementa.substring(0, 2000)}${d.ementa.length > 2000 ? '... [TRECHO CORTADO]' : ''}\n${'─'.repeat(70)}\n`).join('\n');
-                
-                const finalPrompt = `Você é um Consultor Jurídico de Inteligência Artificial para Controle Externo.
-
-**PERGUNTA DO USUÁRIO:**
-"${userText}"
-
-**SUA TAREFA:**
-Sintetize uma resposta inteligente, técnica e completa respondendo à pergunta do usuário, baseando-se nas decisões fornecidas. 
-
-**DIRETRIZES DE INTELIGÊNCIA:**
-1. **Conecte os pontos:** Não liste apenas as decisões. Crie uma narrativa fluida. (Ex: "A jurisprudência majoritária entende que X [TCU - 123]. No entanto, existem ressalvas quando Y [TCE - 456].")
-2. **Uso de Analogia:** Se as decisões não responderem com o caso exato, responda usando os princípios jurídicos mais próximos presentes nas ementas e explique a relação.
-3. **Citação Obrigatória:** Coloque a tag [Órgão - Processo] ao final das afirmações que tirar do banco.
-4. **Honestidade Contextual:** Se as decisões fornecidas forem insuficientes para uma resposta completa, responda o que for possível e adicione ao final: "Nota: O banco de dados atual possui limitação de precedentes específicos para abranger todos os cenários desta questão."
-
-**DECISÕES DISPONÍVEIS:**
-${contextDecisions}`;
-
-                const answer = await callCohereAPI(finalPrompt);
-                const ehRespostaNegativa = answer.includes("Não encontrei jurisprudência");
-                
-                const stats = `Corpus: ${totalDocs} | Pré-filtro: ${top100.length} | Rerank: ${topRelevant.length} | Threshold: ${cutoff.toFixed(3)}`;
-                
-                if (!ehRespostaNegativa) {
-                    sessionStorage.setItem(`ask_${cacheKey}`, JSON.stringify({ resposta: answer, timestamp: Date.now(), stats: stats }));
-                }
-                
-                const dadosExportacao = { 
-                    pergunta: userText, 
-                    resposta: answer, 
-                    base: contextDecisions, 
-                    ids: top15.map(d => d.id),
-                    metadados: { termos_busca: Array.from(termosMap.keys()), decisoes_analisadas: top15.length, threshold_semantico: cutoff.toFixed(3), score_medio: avgScore.toFixed(3), resposta_negativa: ehRespostaNegativa }
-                };
-                
-                appendToChat(answer, false, dadosExportacao);
-                if (!ehRespostaNegativa) appendToChat(`\n📊 ${stats}`, false);
-
-            } catch (e) {
-                let msgErro = e.message;
-                if (msgErro.includes("429") || msgErro.toLowerCase().includes("rate limit") || msgErro.toLowerCase().includes("too many requests")) {
-                    msgErro = "⚠️ Limite de consultas atingido. Aguarde 1 minuto (chave gratuita: ~20 req/min).";
-                } else if (msgErro.toLowerCase().includes("parse") || msgErro.toLowerCase().includes("json")) {
-                    msgErro = "⚠️ Erro ao processar resposta. Tente novamente.";
-                }
-                appendToChat(`❌ Erro: <b>${msgErro}</b>`, false);
-            } finally {
-                btnText.innerHTML = originalBtnHtml;
-            }
-        }
-
-     async function fundamentarTexto() {
-            const inputEl = document.getElementById('aiInput');
-            const userText = inputEl.value.trim();
-            
-            if (!userText) return alert("Cole o trecho do seu parecer ou relatório antes de clicar em Fundamentar.");
-
-            inputEl.value = '';
-            appendToChat(`**TRECHO DA MINHA PEÇA:**\n*"${userText}"*`, true);
-
-            const btnText = document.getElementById('fundBtnText');
-            const originalBtnHtml = btnText.innerHTML;
-
-            try {
-                // Cache check
-                const cacheKey = normalizar(userText.substring(0, 150));
-                const cached = sessionStorage.getItem(`fund_${cacheKey}`);
-                if (cached) {
-                    const { resposta, timestamp, stats } = JSON.parse(cached);
-                    if (Date.now() - timestamp < 3600000) {
-                        appendToChat(`🔄 **(Resultado cacheado)**\n\n${resposta}`, false);
-                        if (stats) appendToChat(`📊 ${stats}`, false);
-                        return;
-                    }
-                }
-
-                // ========================================
-                // EXTRAÇÃO LOCAL DE TERMOS E TF-IDF (O Motor que estava faltando!)
-                // ========================================
-                btnText.innerHTML = '🔍 Extraindo termos...';
-                
-                const ignorar = new Set(['qual', 'entendimento', 'sobre', 'que', 'ser', 'ter', 'poder', 
-                    'para', 'dos', 'das', 'com', 'como', 'estabelecido', 'ou', 'em', 'um', 'uma', 
-                    'na', 'no', 'aos', 'por', 'pelo', 'pela', 'tem', 'deve', 'sao', 'mais', 
-                    'conforme', 'autos', 'demonstrado', 'tendo', 'vista', 'ainda', 'sendo', 'foi', 
-                    'nos', 'nas', 'sem', 'sob', 'essa', 'esse', 'desta', 'deste', 'suas', 'seus',
-                    'este', 'esta', 'caso', 'seguinte', 'analisar', 'entretanto', 'ressaltou',
-                    'verificou', 'nada', 'qualquer', 'entao', 'bem', 'tais', 'pelas', 'pelos']);
-                
-                // MÁGICA DE LIMPEZA: Remove pontuação e vírgulas para não poluir
-                const textoLimpo = userText.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9-]/g, ' ').replace(/\s+/g, ' ').trim();
-                
-                const dispositivosRegex = /(?:art(?:igo)?\.?\s*\d+[\w-]*|lei\s+\d+[\./]\d+|decreto\s+\d+)/gi;
-                const dispositivos = [...new Set((userText.match(dispositivosRegex) || []).map(d => normalizar(d)))];
-                
-                const palavras = textoLimpo.split(/\s+/).filter(p => p.length > 2 && !ignorar.has(p) && !/^\d+$/.test(p));
-                const termosTecnicos = [...new Set(palavras.filter(p => p.length >= 7 || p.includes('-')))];
-                
-                const bigramas = [];
-                for (let i = 0; i < palavras.length - 1; i++) {
-                    const bigrama = `${palavras[i]} ${palavras[i+1]}`;
-                    if (bigrama.length > 8) bigramas.push(bigrama);
-                }
-                const bigramasUnicos = [...new Set(bigramas)].slice(0, 10);
-                
-                let termosComPeso = [
-                    ...dispositivos.map(t => ({ termo: t, peso: 3 })),
-                    ...bigramasUnicos.map(t => ({ termo: t, peso: 2.5 })),
-                    ...termosTecnicos.slice(0, 15).map(t => ({ termo: t, peso: 2 })),
-                    ...palavras.filter(p => p.length > 4).slice(0, 20).map(t => ({ termo: t, peso: 1 }))
-                ];
-                
                 const termosMap = new Map();
                 termosComPeso.forEach(({ termo, peso }) => {
                     if (!termosMap.has(termo) || termosMap.get(termo) < peso) { termosMap.set(termo, peso); }
@@ -1018,14 +846,13 @@ ${contextDecisions}`;
                 termosComPeso = Array.from(termosMap, ([termo, peso]) => ({ termo, peso }));
 
                 if (termosComPeso.length === 0) {
-                    appendToChat(`❌ Texto muito curto ou genérico. Adicione termos mais específicos.`, false);
+                    appendToChat(`❌ Termos inválidos.`, false);
                     btnText.innerHTML = originalBtnHtml;
                     return;
                 }
 
                 btnText.innerHTML = '⚡ Busca lexical (TF-IDF)...';
                 if (!corpusIndexPreprocessado) preprocessarCorpus();
-                
                 const { termFrequency, docVectors, totalDocs } = corpusIndexPreprocessado;
                 
                 let scoredData = [];
@@ -1044,160 +871,87 @@ ${contextDecisions}`;
                 let top100 = scoredData.slice(0, 100).map(d => d.item);
 
                 if (top100.length === 0) {
-                    appendToChat(`📭 Nenhuma decisão encontrada. Termos buscados: ${Array.from(termosMap.keys()).slice(0, 8).join(', ')}`, false);
+                    appendToChat(`📭 Nenhuma decisão encontrada no banco com estes termos.`, false);
                     btnText.innerHTML = originalBtnHtml;
                     return;
                 }
 
-                const termosExibir = Array.from(termosMap.keys()).slice(0, 8).join(', ');
-                appendToChat(`🎯 **Peneira Lexical:** ${top100.length} decisões | Termos: ${termosExibir}...`, false);
+                appendToChat(`🎯 **Peneira Lexical:** ${top100.length} decisões separadas rapidamente.`, false);
 
                 // ========================================
-                // RERANK SEMÂNTICO
+                // RERANK E ANÁLISE
                 // ========================================
                 btnText.innerHTML = '🧠 Rerank semântico...';
                 
+                const queryRerank = `${tese} ${acessorios}`;
                 const docTexts = top100.map(d => d.ementa.substring(0, 3000));
-                const rerankResponse = await callCohereRerank(userText, docTexts);
+                const rerankResponse = await callCohereRerank(queryRerank, docTexts);
                 
                 const scores = rerankResponse.results.map(r => r.relevance_score);
                 const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-                const stdDev = Math.sqrt(
-                    scores.reduce((sq, n) => sq + Math.pow(n - avgScore, 2), 0) / scores.length
-                );
+                const stdDev = Math.sqrt(scores.reduce((sq, n) => sq + Math.pow(n - avgScore, 2), 0) / scores.length);
                 
-                // Threshold permissivo
-                const cutoff = Math.max(0.1, avgScore + 0.1 * stdDev);
+                const cutoff = Math.max(0.10, avgScore + 0.1 * stdDev);
                 let topRelevant = rerankResponse.results.filter(r => r.relevance_score > cutoff);
                 
-                // Fallback: pegar pelo menos as top 20 se threshold for muito alto
-                if (topRelevant.length < 10) {
-                    topRelevant = rerankResponse.results.slice(0, 20);
-                    appendToChat(`⚠️ Threshold alto (${cutoff.toFixed(3)}). Ampliando para top 20 decisões.`, false);
+                // Pega pelo menos as 15 melhores para a IA ter o que ler
+                if (topRelevant.length < 15 && rerankResponse.results.length >= 15) {
+                    topRelevant = rerankResponse.results.slice(0, 15);
                 }
 
-                let top20 = topRelevant.slice(0, 20).map(r => top100[r.index]);
-                const topScores = topRelevant.slice(0, 20).map(r => r.relevance_score);
+                let topFinal = topRelevant.slice(0, 15).map(r => top100[r.index]);
 
-                appendToChat(`🔬 **Rerank:** ${topRelevant.length} decisões (threshold: ${cutoff.toFixed(3)}) | Top 20 selecionadas`, false);
+                appendToChat(`🔬 **Inteligência Artificial:** Lendo os significados e selecionando o TOP ${topFinal.length} para análise e formatação.`, false);
 
-                // ========================================
-                // CHAMADA ÚNICA: ANÁLISE + FORMATAÇÃO
-                // ========================================
-                btnText.innerHTML = '⚖️ Análise qualitativa...';
+                btnText.innerHTML = '⚖️ Extraindo Conhecimento...';
                 
-                const contextDecisions = top20.map((d, idx) => `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-DECISÃO [${idx}] - Score de Rerank: ${topScores[idx].toFixed(3)}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Tribunal: ${d.tribunal}
-Processo: ${d.processo}
-Ano: ${d.ano || 'Não informado'}
-Relator: ${d.relator || 'Não informado'}
+                const contextDecisions = topFinal.map((d) => `[${d.tribunal} - ${d.processo} - Ano: ${d.ano || 'N/D'}]\nEMENTA:\n${d.ementa.substring(0, 1800)}`).join('\n\n---\n\n');
 
-EMENTA:
-${d.ementa.substring(0, 1800)}${d.ementa.length > 1800 ? '\n\n[... ementa truncada ...]' : ''}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-`).join('\n\n');
+                const finalPrompt = `Você é um Consultor Jurídico Sênior para Tribunais de Contas.
 
-                const finalPrompt = `Você é um Consultor Jurídico Sênior de Tribunal de Contas (TCMRio).
-Sua missão é ajudar um auditor a encontrar a melhor fundamentação ou tese análoga para o texto dele.
-
-**TRECHO DO VOTO DO AUDITOR:**
-"${userText}"
-
-Você recebeu as ${top20.length} decisões que mais se aproximam desse tema. 
+**TESE PESQUISADA:**
+Tese: "${tese}"
+Contexto: "${acessorios}"
 
 **SUA TAREFA:**
-Não seja rígido a ponto de descartar tudo. Procure o **Princípio Jurídico** ou a **Ratio Decidendi** por trás das decisões. Mesmo que a área material não seja idêntica (ex: saúde vs educação), se o entendimento sobre a lei, contabilidade, ou infração for aplicável, USE A DECISÃO.
+Analise as ${topFinal.length} decisões fornecidas. Selecione as que mais ajudam a fundamentar a tese pesquisada.
+Não seja engessado: Se as decisões não responderem com o caso exato, use os princípios jurídicos mais próximos presentes nas ementas e explique a relação por analogia.
 
-Para as decisões que puderem ser aproveitadas (diretamente ou por analogia), formate EXATAMENTE assim (separe com "---"):
-
+**FORMATAÇÃO OBRIGATÓRIA PARA CADA DECISÃO ÚTIL:**
 ---
 **[Tribunal - Processo - Ano]**
 TRECHO DA EMENTA: "[Copie o trecho útil da ementa aqui]"
-COMO APLICAR: [Explique em 2 frases como o auditor pode usar esse precedente para sustentar a tese dele, mesmo que seja por analogia].
+APLICAÇÃO PRÁTICA: [Explique como o auditor pode usar esse precedente para sustentar a tese dele].
 ---
 
-Se (e apenas se) NENHUMA das decisões tiver absolutamente NADA a ver com a lógica jurídica do texto, responda: "NENHUMA_APROVADA".
+Se NENHUMA das decisões tiver qualquer utilidade, responda apenas: "NENHUMA_DECISAO_APLICAVEL".
 
-**DECISÕES PARA ANÁLISE:**
+**DECISÕES DISPONÍVEIS PARA LEITURA:**
 ${contextDecisions}`;
 
                 const respostaFinal = await callCohereAPI(finalPrompt);
                 
-                // ========================================
-                // PARSE ROBUSTO DA RESPOSTA
-                // ========================================
-                
-                // Verificar rejeição total
-                if (respostaFinal.includes('REJEIÇÃO_TOTAL') || respostaFinal.includes('NENHUMA_APROVADA')) {
-                    const motivo = respostaFinal.split(':')[1]?.trim() || 'decisões não atendem critérios de pertinência';
-                    
-                    appendToChat(`❌ **Análise Concluída: Nenhuma Decisão Aprovada**\n\n**Motivo:** ${motivo}\n\n**Diagnóstico:** Das ${top20.length} decisões com melhor score semântico (threshold: ${cutoff.toFixed(3)}), nenhuma apresentou pertinência material suficiente para fundamentar esta tese específica.\n\n**Sugestões:**\n1. **Reformule a busca** usando termos mais amplos (ex: ao invés de "MCASP 11ª ed.", busque "contabilidade pública" ou "demonstrações contábeis")\n2. **Busca manual** por conceitos-chave isolados: "representação fidedigna", "NBC TSP", "informação contábil"\n3. **Considere** que teses muito técnicas/específicas podem ter poucos precedentes diretos no banco atual\n\n**Termos buscados:** ${Array.from(termosMap.keys()).slice(0, 10).join(', ')}...`, false);
-                    
+                if (respostaFinal.includes('NENHUMA_DECISAO_APLICAVEL')) {
+                    appendToChat(`❌ **IA Juíza:** Nenhuma das decisões filtradas serve para embasar essa tese específica de forma coerente. Tente ampliar os sinônimos.`, false);
                     btnText.innerHTML = originalBtnHtml;
                     return;
                 }
 
-                // Contar decisões aprovadas (aproximado - conta blocos com formato correto)
-                const blocosDecisao = respostaFinal.split('---').filter(bloco => 
-                    bloco.includes('**[') && bloco.includes('TRECHO DA EMENTA')
-                );
-                const numAprovadas = blocosDecisao.length;
+                let respostaSanitizada = respostaFinal.replace(/<[^>]*>/g, '').trim();
 
-                if (numAprovadas === 0) {
-                    // Resposta veio formatada errado mas sem rejeição explícita
-                    appendToChat(`⚠️ **Resposta da IA sem formatação adequada.**\n\nA IA retornou texto mas não seguiu o formato esperado. Exibindo resposta bruta:\n\n${respostaFinal}\n\n**Ação recomendada:** Tente novamente. Se persistir, o prompt pode precisar ajuste.`, false);
-                    btnText.innerHTML = originalBtnHtml;
-                    return;
-                }
-
-                appendToChat(`✅ **Análise Concluída:** ${numAprovadas} decisão(ões) aprovada(s) de ${top20.length} analisadas`, false);
-
-                // ========================================
-                // SANITIZAR E EXIBIR RESPOSTA
-                // ========================================
-                
-                // Limpar qualquer HTML/markup que a IA possa ter inserido
-                let respostaSanitizada = respostaFinal
-                    .replace(/<[^>]*>/g, '') // Remove tags HTML
-                    .replace(/class="[^"]*"/g, '') // Remove atributos class
-                    .replace(/style="[^"]*"/g, '') // Remove atributos style
-                    .trim();
-
-                // Cache e exportação
-                const stats = `Corpus: ${totalDocs} | Peneira: ${top100.length} | Rerank: ${topRelevant.length} | Aprovadas: ${numAprovadas}`;
-                
-                sessionStorage.setItem(`fund_${cacheKey}`, JSON.stringify({
-                    resposta: respostaSanitizada,
-                    timestamp: Date.now(),
-                    stats: stats
-                }));
-                
                 const dadosExportacao = { 
-                    pergunta: `FUNDAMENTAÇÃO:\n"${userText}"`, 
+                    pergunta: userMsg, 
                     resposta: respostaSanitizada, 
                     base: contextDecisions,
-                    ids: top20.map(d => d.id),
-                    metadados: {
-                        termos_busca: Array.from(termosMap.keys()),
-                        decisoes_analisadas: top20.length,
-                        threshold_semantico: cutoff.toFixed(3),
-                        score_medio: avgScore.toFixed(3),
-                        aprovadas: numAprovadas
-                    }
+                    ids: topFinal.map(d => d.id)
                 };
                 
                 appendToChat(respostaSanitizada, false, dadosExportacao);
-                appendToChat(`\n📊 **Estatísticas:** ${stats}`, false);
 
             } catch (e) {
                 let msgErro = e.message;
                 if (msgErro.includes("429") || msgErro.toLowerCase().includes("rate limit")) {
                     msgErro = "⚠️ Limite de requisições atingido. Aguarde 1-2 minutos.";
-                } else if (msgErro.toLowerCase().includes("parse")) {
-                    msgErro = "⚠️ Erro ao processar resposta da IA. A resposta pode estar malformada.";
                 }
                 appendToChat(`❌ **Erro:** ${msgErro}`, false);
                 console.error("Erro detalhado:", e);
